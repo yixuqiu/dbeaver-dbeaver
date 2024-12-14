@@ -98,7 +98,7 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
     private volatile boolean hasStatistics;
     private boolean supportsEnumTable;
     private boolean supportsReltypeColumn = true;
-    private volatile boolean isConnectionRefershing = false;
+    private volatile boolean isConnectionRefreshing = false;
 
     public PostgreDataSource(DBRProgressMonitor monitor, DBPDataSourceContainer container)
         throws DBException
@@ -475,12 +475,12 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
         shutdown(monitor);
 
         try {
-            this.setConnectionRefreshing(true);
+            this.isConnectionRefreshing = true;
             this.databaseCache.clearCache();
             this.activeDatabaseName = null;
             this.initializeRemoteInstance(monitor);
         } finally {
-            this.setConnectionRefreshing(false);
+            this.isConnectionRefreshing = false;
         }
         this.initialize(monitor);
 
@@ -791,11 +791,7 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
 
     @Override
     public boolean isConnectionRefreshing() {
-        return isConnectionRefershing;
-    }
-
-    public void setConnectionRefreshing(boolean connectionRefreshing) {
-        this.isConnectionRefershing = connectionRefreshing;
+        return isConnectionRefreshing;
     }
 
     private static class DatabaseCache extends SimpleObjectCache<PostgreDataSource, PostgreDatabase> {
