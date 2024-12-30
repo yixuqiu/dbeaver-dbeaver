@@ -16,26 +16,33 @@
  */
 package org.jkiss.dbeaver.model.sql;
 
-import org.jkiss.code.NotNull;
-import org.jkiss.dbeaver.DBException;
-import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-
 /**
- * Control command handler
+ * Control command result.
+ *
+ * It may finish with no extra information or with parameters:
+ *  - message: will be shown in UI
+ *  - error: execution error will be shown in UI
  */
-public interface SQLControlCommandHandler
-{
-    /**
-     * @param monitor
-     * @param command       command
-     * @param scriptContext script context
-     * @return false if command failed and execution has to be stopped
-     */
-    @NotNull
-    SQLControlResult handleCommand(
-        @NotNull DBRProgressMonitor monitor,
-        @NotNull SQLControlCommand command,
-        @NotNull SQLScriptContext scriptContext)
-        throws DBException;
+public class SQLControlResult {
 
+    public static SQLControlResult success() {
+        return new SQLControlResult();
+    }
+
+    public static SQLControlResult transform(SQLScriptElement element) {
+        return new SQLControlResult(element);
+    }
+
+    private SQLScriptElement transformed;
+
+    private SQLControlResult() {
+    }
+
+    private SQLControlResult(SQLScriptElement transformed) {
+        this.transformed = transformed;
+    }
+
+    public SQLScriptElement getTransformed() {
+        return transformed;
+    }
 }
