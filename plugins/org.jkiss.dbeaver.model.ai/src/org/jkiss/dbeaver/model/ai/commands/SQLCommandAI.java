@@ -101,6 +101,7 @@ public class SQLCommandAI implements SQLControlCommandHandler {
 
         DAICompletionResponse response = responses.get(0);
         MessageChunk[] messageChunks = AITextUtils.splitIntoChunks(
+            dataSource.getSQLDialect(),
             CommonUtils.notEmpty(response.getResultCompletion()));
 
         String finalSQL = null;
