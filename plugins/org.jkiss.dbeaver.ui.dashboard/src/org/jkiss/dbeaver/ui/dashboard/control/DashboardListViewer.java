@@ -39,7 +39,7 @@ import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ui.UIServiceConnections;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.dashboard.model.*;
-import org.jkiss.dbeaver.ui.dashboard.view.DashboardCatalogPanel;
+import org.jkiss.dbeaver.ui.dashboard.view.catalogpanel.DashboardCatalogPanel;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 
 import java.io.IOException;
@@ -77,6 +77,7 @@ public class DashboardListViewer extends StructuredViewer implements DBPDataSour
     });
     private SashForm dashDivider;
     private DashboardCatalogPanel catalogPanel;
+    private boolean isCatalogPanelVisible;
 
     public DashboardListViewer(
         @NotNull IWorkbenchSite site,
@@ -139,7 +140,6 @@ public class DashboardListViewer extends StructuredViewer implements DBPDataSour
                 dashContainer.addItem(getSelectedDashboard());
             }
         };
-
 
         dashDivider.setWeights(650, 350);
         dashDivider.setMaximizedControl(dashContainer);
@@ -227,10 +227,21 @@ public class DashboardListViewer extends StructuredViewer implements DBPDataSour
     public void showChartCatalog() {
         if (dashDivider.getMaximizedControl() != null) {
             dashDivider.setMaximizedControl(null);
-        } else if (dashDivider.getWeights()[1] == 0){
+        } else if (dashDivider.getWeights()[1] == 0) {
             dashDivider.setWeights(650, 350);
         }
         catalogPanel.setFocus();
+         isCatalogPanelVisible = true;
+    }
+
+    @Override
+    public void hideChartCatalog() {
+        if (dashDivider.getMaximizedControl() != null) {
+            dashDivider.setMaximizedControl(null);
+        } else {
+            dashDivider.setWeights(100, 0);
+        }
+        isCatalogPanelVisible = false;
     }
 
     @Override
@@ -341,6 +352,13 @@ public class DashboardListViewer extends StructuredViewer implements DBPDataSour
                 return Status.OK_STATUS;
             }
         }.schedule();
+    }
+
+    /**
+     * Gets visibility flag 
+     */
+    public boolean isVisible() {
+        return isCatalogPanelVisible;
     }
 
 }

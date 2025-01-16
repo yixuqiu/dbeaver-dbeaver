@@ -23,6 +23,7 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.app.DBACertificateStorage;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.utils.Base64;
 
 import java.io.*;
@@ -58,19 +59,17 @@ public class DefaultCertificateStorage implements DBACertificateStorage {
         this.userDefinedKeystores = new HashMap<>();
         if (Files.exists(localPath)) {
             // Cleanup old keystores
-            final File[] ksFiles = localPath.toFile().listFiles();
-            if (ksFiles != null) {
-                for (File ksFile : ksFiles) {
-                    if (!ksFile.delete()) {
-                        log.warn("Can't delete old keystore '" + ksFile.getAbsolutePath() + "'");
+            // We do not cleanup key stores in non-primary instances
+            // Because they may be used by another instances of the application (pro/#2998)
+            if (DBWorkbench.getPlatform().getApplication().isPrimaryInstance()) {
+                final File[] ksFiles = localPath.toFile().listFiles();
+                if (ksFiles != null) {
+                    for (File ksFile : ksFiles) {
+                        if (!ksFile.delete()) {
+                            log.warn("Can't delete old keystore '" + ksFile.getAbsolutePath() + "'");
+                        }
                     }
                 }
-            }
-        } else {
-            try {
-                Files.createDirectories(localPath);
-            } catch (IOException e) {
-                log.error("Can't create directory for security manager: " + localPath, e);
             }
         }
     }
@@ -98,15 +97,27 @@ public class DefaultCertificateStorage implements DBACertificateStorage {
     @NotNull
     @Override
     public Path getStorageFolder() {
+        checkConfigFolderExists();
         return this.localPath;
     }
 
     private void saveKeyStore(DBPDataSourceContainer container, String certType, KeyStore keyStore) throws Exception {
+        checkConfigFolderExists();
         final Path ksFile = getKeyStorePath(container, certType);
 
         try (OutputStream os = Files.newOutputStream(ksFile)) {
             keyStore.store(os, DEFAULT_PASSWORD);
         }
+    }
+
+    private void checkConfigFolderExists() {
+        if (!Files.exists(localPath)) {
+           try {
+               Files.createDirectories(localPath);
+           } catch (IOException e) {
+               log.error("Can't create directory for security manager: " + localPath, e);
+           }
+       }
     }
 
     public static byte[] readEncryptedString(InputStream stream) throws IOException {
@@ -176,6 +187,7 @@ public class DefaultCertificateStorage implements DBACertificateStorage {
 
     @Override
     public void addCertificate(@NotNull DBPDataSourceContainer dataSource, @NotNull String certType, @NotNull byte[] keyStoreData, @NotNull char[] keyStorePassword) throws DBException {
+        checkConfigFolderExists();
         final Path keyStorePath = getKeyStorePath(dataSource, certType);
         if (!Files.exists(keyStorePath)) {
             try {

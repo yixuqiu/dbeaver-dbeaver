@@ -23,7 +23,6 @@ import org.eclipse.swt.events.MouseAdapter;
 import org.eclipse.swt.events.MouseEvent;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
-import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
@@ -32,10 +31,13 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverDependencies;
 import org.jkiss.dbeaver.model.connection.DBPDriverLibrary;
+import org.jkiss.dbeaver.model.exec.DBExceptionWithHistory;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
+import org.jkiss.dbeaver.model.runtime.ProgressMonitorWithExceptionContext;
 import org.jkiss.dbeaver.registry.DBConnectionConstants;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.WebUtils;
+import org.jkiss.dbeaver.ui.BaseThemeSettings;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.internal.UIConnectionMessages;
@@ -60,11 +62,10 @@ class DriverDependenciesTree {
     private DBPDriver driver;
     private Collection<? extends DBPDriverLibrary> libraries;
     private final DBPDriverDependencies dependencies;
-    private boolean editable;
+    private final boolean editable;
 
-    private Tree filesTree;
+    private final Tree filesTree;
     private TreeEditor treeEditor;
-    private Font boldFont;
 
     public DriverDependenciesTree(Composite parent, DBRRunnableContext runnableContext, DBPDriverDependencies dependencies, DBPDriver driver, Collection<? extends DBPDriverLibrary> libraries, boolean editable) {
         this.runnableContext = runnableContext;
@@ -83,8 +84,6 @@ class DriverDependenciesTree {
         UIUtils.createTreeColumn(filesTree, SWT.LEFT, "Description");
 
         if (editable) {
-            boldFont = UIUtils.makeBoldFont(filesTree.getFont());
-
             treeEditor = new TreeEditor(filesTree);
             treeEditor.horizontalAlignment = SWT.RIGHT;
             treeEditor.verticalAlignment = SWT.CENTER;
@@ -104,8 +103,6 @@ class DriverDependenciesTree {
                     disposeOldEditor();
                 }
             });
-
-            filesTree.addDisposeListener(e -> UIUtils.dispose(boldFont));
         }
     }
 
@@ -123,22 +120,28 @@ class DriverDependenciesTree {
 
     public boolean loadLibDependencies() throws DBException {
         boolean resolved = false;
+        List<Throwable> exceptions = new ArrayList<>();
         try {
             runnableContext.run(true, true, monitor -> {
-                monitor.beginTask("Resolve dependencies", 100);
+
+                ProgressMonitorWithExceptionContext monitorWithExceptions = new ProgressMonitorWithExceptionContext(monitor);
+                monitorWithExceptions.beginTask("Resolve dependencies", 100);
                 try {
-                    dependencies.resolveDependencies(monitor);
+                    dependencies.resolveDependencies(monitorWithExceptions);
                 } catch (Exception e) {
                     throw new InvocationTargetException(e);
                 } finally {
-                    monitor.done();
+                    exceptions.addAll(monitorWithExceptions.getExceptions());
+                    monitorWithExceptions.done();
                 }
             });
             resolved = true;
         } catch (InterruptedException e) {
             // User just canceled download
         } catch (InvocationTargetException e) {
-            throw new DBException("Error resolving dependencies", e.getTargetException());
+            Throwable cause = e.getTargetException();
+            exceptions.add(cause);
+            throw new DBExceptionWithHistory("Error resolving dependencies", cause, exceptions);
         }
 
         filesTree.removeAll();
@@ -156,7 +159,7 @@ class DriverDependenciesTree {
             item.setText(1, CommonUtils.notEmpty(library.getVersion()));
             item.setText(2, CommonUtils.notEmpty(library.getDescription()));
             if (editable) {
-                item.setFont(1, boldFont);
+                item.setFont(1, BaseThemeSettings.instance.baseFontBold);
             }
             totalItems++;
             if (addDependencies(item, node)) {
@@ -184,7 +187,9 @@ class DriverDependenciesTree {
     private void grayOutInstalledArtifact(DBPDriverDependencies.DependencyNode node, TreeItem item) {
         Path localFile = node.library.getLocalFile();
         try {
-            if (editable && localFile != null && Files.exists(localFile) && Files.size(localFile) > 0) {
+            if (node.library.isInvalidLibrary()) {
+                item.setForeground(filesTree.getDisplay().getSystemColor(SWT.COLOR_RED));
+            } else if (editable && localFile != null && Files.exists(localFile) && Files.size(localFile) > 0) {
                 item.setForeground(filesTree.getDisplay().getSystemColor(SWT.COLOR_WIDGET_DARK_SHADOW));
             }
         } catch (IOException ex) {
@@ -192,15 +197,23 @@ class DriverDependenciesTree {
         }
     }
 
-    public boolean handleDownloadError(DBException e) {
+    public boolean handleDownloadError(DBException causeException) {
         try {
             checkNetworkAccessible();
         } catch (DBException dbException) {
-            DBWorkbench.getPlatformUI().showError("Download error",
-                "Network error", dbException);
-            return false;
+            if (causeException instanceof DBExceptionWithHistory exceptionWithHistory) {
+                List<Throwable> exceptions = exceptionWithHistory.getExceptions();
+                exceptions.add(dbException);
+                DBWorkbench.getPlatformUI().showError("Download error",
+                    String.format("Network error: %s", dbException.getMessage()),
+                    GeneralUtils.transformExceptionsToStatus(exceptions));
+            } else {
+                DBWorkbench.getPlatformUI().showError("Download error",
+                    String.format("Network error: %s", dbException.getMessage()),
+                    dbException);
+                return false;
+            }
         }
-        DBWorkbench.getPlatformUI().showError("Resolve driver files", "Error downloading driver libraries", e);
         return true;
     }
 
@@ -209,7 +222,7 @@ class DriverDependenciesTree {
             WebUtils.openConnection(NETWORK_TEST_URL, GeneralUtils.getProductTitle());
         } catch (IOException e) {
             String message;
-            if (RuntimeUtils.isWindows() && e instanceof SSLHandshakeException) {
+            if (RuntimeUtils.isWindows() && CommonUtils.hasCause(e, SSLHandshakeException.class)) {
                 if (DBWorkbench.getPlatform()
                     .getApplication().hasProductFeature(DBConnectionConstants.PRODUCT_FEATURE_SIMPLE_TRUSTSTORE)) {
                     message = UIConnectionMessages.dialog_driver_download_network_unavailable_cert_msg;
@@ -219,7 +232,8 @@ class DriverDependenciesTree {
             } else {
                 message = UIConnectionMessages.dialog_driver_download_network_unavailable_msg;
             }
-            throw new DBException(message + "\n" + e.getClass().getName() + ":" + e.getMessage());
+            String exceptionMessage = message + "\n" + e.getClass().getName() + ":" + e.getMessage();
+            throw new DBException(exceptionMessage);
         }
     }
 

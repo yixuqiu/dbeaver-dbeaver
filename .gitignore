@@ -28,16 +28,20 @@ buildNumber.properties
 /workspace/
 
 ## IDEA configs
-
-*.iml
-/idea/
 .idea/
+*.iml
+*.ipr
+*.iws
+/idea/
 
 ## Eclipse configs
 
 .project
 .classpath
 .settings/
+
+## Eclipse PDE
+*.product.launch
 
 # Dev executables
 

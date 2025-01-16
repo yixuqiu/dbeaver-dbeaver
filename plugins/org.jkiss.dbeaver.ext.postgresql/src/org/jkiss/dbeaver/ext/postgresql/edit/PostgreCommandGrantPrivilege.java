@@ -21,6 +21,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
 import org.jkiss.dbeaver.ext.postgresql.model.*;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
+import org.jkiss.dbeaver.model.DBPObject;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.edit.DBECommand;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
@@ -95,15 +96,12 @@ public class PostgreCommandGrantPrivilege extends DBECommandAbstract<PostgrePriv
         } else {
             PostgreObjectPrivilege permission = (PostgreObjectPrivilege) this.privilege;
             if (permission.getGrantee() != null) {
-                roleName = permission.getGrantee();
-                if (!roleName.toLowerCase(Locale.ENGLISH).startsWith("group ")) {
-                    // Group names already can be quoted
-                    roleName = DBUtils.getQuotedIdentifier(object.getDataSource(), roleName);
-                }
+                roleName = DBUtils.getQuotedIdentifier(object.getDataSource(), permission.getGrantee().getRoleName());
+                roleType = permission.getGrantee().getRoleType();
             } else {
                 roleName = "";
             }
-            objectName = PostgreUtils.getObjectUniqueName(object);
+            objectName = PostgreUtils.getObjectUniqueName(object, options);
         }
 
         String objectType;
@@ -137,21 +135,27 @@ public class PostgreCommandGrantPrivilege extends DBECommandAbstract<PostgrePriv
             grantedTypedObject = objectType + " " + objectName;
         }
 
-        String scriptBeginning = "";
-        if (privilege instanceof PostgreDefaultPrivilege) {
-            scriptBeginning = "ALTER DEFAULT PRIVILEGES IN SCHEMA " + DBUtils.getQuotedIdentifier(privilege.getOwner()) + " ";
+        StringBuilder ddl = new StringBuilder();
+        if (privilege instanceof PostgreDefaultPrivilege dp) {
+            ddl.append("ALTER DEFAULT PRIVILEGES");
+            if (dp.getGrantor() != null) {
+                ddl.append(" FOR ROLE ").append(DBUtils.getQuotedIdentifier(dp.getDataSource(), dp.getGrantor().getRoleName()));
+            }
+            ddl.append(" IN SCHEMA ").append(DBUtils.getQuotedIdentifier(privilege.getOwner())).append(" ");
         }
-
-        String grantScript = scriptBeginning + (grant ? "GRANT " : "REVOKE ") + privName + grantedCols +
-            " ON " + grantedTypedObject +
-            (grant ? " TO " : " FROM ") + (roleType != null ? roleType + " " : "") + roleName;
+        ddl.append(grant ? "GRANT " : "REVOKE ").append(privName).append(grantedCols).append(" ON ").append(grantedTypedObject);
+        ddl.append(grant ? " TO" : " FROM");
+        if (roleType != null) {
+            ddl.append(" ").append(roleType.toUpperCase());
+        }
+        ddl.append(" ").append(roleName);
         if (grant && withGrantOption) {
-            grantScript += " WITH GRANT OPTION";
+            ddl.append(" WITH GRANT OPTION");
         }
         return new DBEPersistAction[] {
             new SQLDatabasePersistAction(
                 grant ? "Grant" : "Revoke",
-                grantScript
+                ddl.toString()
             )
         };
     }

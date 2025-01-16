@@ -17,14 +17,14 @@
  */
 package org.jkiss.dbeaver.ui.editors.sql.internal;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class SQLEditorMessages extends NLS {
     public static final String BUNDLE_NAME = "org.jkiss.dbeaver.ui.editors.sql.internal.SQLEditorMessages"; //$NON-NLS-1$
 
     public static String dialog_view_sql_button_copy;
     public static String dialog_view_sql_button_refresh;
-    public static String dialog_view_sql_button_persist;
+    public static String dialog_view_sql_button_execute;
 
     public static String dialog_sql_param_title;
     public static String dialog_sql_param_column_name;
@@ -44,8 +44,11 @@ public class SQLEditorMessages extends NLS {
     public static String editor_sql_preference;
     public static String editors_sql_data_grid;
     public static String editors_sql_description;
+    public static String editors_sql_editor_presentation;
     public static String editors_sql_error_cant_execute_query_message;
     public static String editors_sql_error_cant_execute_query_title;
+    public static String editors_sql_error_cant_execute_permissions_query_message;
+    public static String editors_sql_error_cant_execute_readonly_query_message;
     public static String editors_sql_error_cant_obtain_session;
     public static String editors_sql_error_execution_plan_message;
     public static String editors_sql_error_execution_plan_title;
@@ -209,9 +212,8 @@ public class SQLEditorMessages extends NLS {
     public static String pref_page_sql_completion_group_sql_assistant;
     public static String pref_page_sql_completion_label_enable_auto_activation;
     public static String pref_page_sql_completion_label_enable_auto_activation_tip;
-    public static String pref_page_sql_completion_label_enable_experimental_features;
-    public static String pref_page_sql_completion_label_enable_experimental_features_tip;
     public static String pref_page_sql_completion_label_completion_mode;
+    public static String pref_page_sql_completion_label_completion_mode_tip;
     public static String pref_page_sql_completion_label_completion_mode_default;
     public static String pref_page_sql_completion_label_completion_mode_new_engine;
     public static String pref_page_sql_completion_label_completion_mode_combined;
@@ -227,6 +229,7 @@ public class SQLEditorMessages extends NLS {
     public static String pref_page_sql_completion_label_replace_word_after;
     public static String pref_page_sql_completion_label_replace_word_after_tip;
     public static String pref_page_sql_completion_label_hide_duplicate_names;
+    public static String pref_page_sql_completion_label_object_names_form;
     public static String pref_page_sql_completion_label_use_short_names;
     public static String pref_page_sql_completion_label_use_long_names;
     public static String pref_page_sql_completion_label_insert_space;
@@ -313,24 +316,24 @@ public class SQLEditorMessages extends NLS {
     public static String pref_page_sql_editor_label_clear_output_before_execute;
     public static String pref_page_sql_editor_label_clear_output_before_execute_tip;
 
-	public static String pref_page_sql_insert_case_default;
-	public static String pref_page_sql_insert_case_lower_case;
-	public static String pref_page_sql_insert_case_upper_case;
+    public static String pref_page_sql_default;
+    public static String pref_page_sql_insert_case_lower_case;
+    public static String pref_page_sql_insert_case_upper_case;
 
     public static String sql_editor_menu_choose_format;
     public static String sql_editor_panel_format;
     public static String sql_editor_result_set_orientation_detached;
-	public static String sql_editor_result_set_orientation_detached_tip;
-	public static String sql_editor_result_set_orientation_horizontal;
-	public static String sql_editor_result_set_orientation_horizontal_tip;
-	public static String sql_editor_result_set_orientation_vertical;
-	public static String sql_editor_result_set_orientation_vertical_tip;
+    public static String sql_editor_result_set_orientation_detached_tip;
+    public static String sql_editor_result_set_orientation_horizontal;
+    public static String sql_editor_result_set_orientation_horizontal_tip;
+    public static String sql_editor_result_set_orientation_vertical;
+    public static String sql_editor_result_set_orientation_vertical_tip;
     public static String sql_script_binding_type_radio_button_connection_name;
-	public static String sql_script_binding_type_radio_button_connection_parameters;
-	public static String sql_script_binding_type_radio_button_connection_unique;
-	public static String sql_script_binding_type_radio_button_connection_url;
+    public static String sql_script_binding_type_radio_button_connection_parameters;
+    public static String sql_script_binding_type_radio_button_connection_unique;
+    public static String sql_script_binding_type_radio_button_connection_url;
 
-	public static String sql_generator_dialog_button_use_fully_names;
+    public static String sql_generator_dialog_button_use_fully_names;
     public static String sql_generator_dialog_button_compact_sql;
     public static String sql_generator_dialog_button_exclude_columns;
     public static String sql_generator_dialog_button_use_custom_data_format;

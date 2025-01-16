@@ -49,6 +49,10 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
 
     public static final String DRIVERS_FILE_NAME = "drivers.xml"; //$NON-NLS-1$
 
+    private static final boolean isDistributed = DBWorkbench.isDistributed();
+    // In detached process we usually have just one driver
+    private static final boolean isDetachedProcess = DBWorkbench.getPlatform().getApplication().isDetachedProcess();
+
     private static final Log log = Log.getLog(DriverDescriptorSerializerLegacy.class);
 
     public void serializeDrivers(OutputStream os, List<DataSourceProviderDescriptor> providers) throws IOException {
@@ -90,10 +94,14 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
             if (!CommonUtils.isEmpty(driver.getCategory())) {
                 xml.addAttribute(RegistryConstants.ATTR_CATEGORY, driver.getCategory());
             }
-            xml.addAttribute(RegistryConstants.ATTR_CATEGORIES, String.join(",", driver.getCategories()));
+            if (!CommonUtils.isEmpty(driver.getCategories())) {
+                xml.addAttribute(RegistryConstants.ATTR_CATEGORIES, String.join(",", driver.getCategories()));
+            }
 
             xml.addAttribute(RegistryConstants.ATTR_NAME, driver.getName());
-            xml.addAttribute(RegistryConstants.ATTR_CLASS, driver.getDriverClassName());
+            if (!CommonUtils.isEmpty(driver.getDriverClassName())) {
+                xml.addAttribute(RegistryConstants.ATTR_CLASS, driver.getDriverClassName());
+            }
             if (!CommonUtils.isEmpty(driver.getSampleURL())) {
                 xml.addAttribute(RegistryConstants.ATTR_URL, driver.getSampleURL());
             }
@@ -109,7 +117,9 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
             if (!CommonUtils.isEmpty(driver.getDefaultUser())) {
                 xml.addAttribute(RegistryConstants.ATTR_DEFAULT_USER, driver.getDefaultUser());
             }
-            xml.addAttribute(RegistryConstants.ATTR_DESCRIPTION, CommonUtils.notEmpty(driver.getDescription()));
+            if (!CommonUtils.isEmpty(driver.getDescription())) {
+                xml.addAttribute(RegistryConstants.ATTR_DESCRIPTION, driver.getDescription());
+            }
             if (driver.isCustomDriverLoader()) {
                 xml.addAttribute(RegistryConstants.ATTR_CUSTOM_DRIVER_LOADER, driver.isCustomDriverLoader());
             }
@@ -131,6 +141,9 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
             }
             if (!driver.isSupportsDistributedMode()) {
                 xml.addAttribute(RegistryConstants.ATTR_SUPPORTS_DISTRIBUTED_MODE, driver.isSupportsDistributedMode());
+            }
+            if (driver.isThreadSafeDriver() != driver.isOrigThreadSafeDriver()) {
+                xml.addAttribute("threadSafe", driver.isThreadSafeDriver());
             }
 
             // Libraries
@@ -171,9 +184,14 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                                 if (!CommonUtils.isEmpty(file.getVersion())) {
                                     xml.addAttribute(RegistryConstants.ATTR_VERSION, file.getVersion());
                                 }
+                                String normalizedFilePath = file.getFile().toString();
+                                if (isDistributed) {
+                                    // we need to relativize path and exclude path variables in config file
+                                    normalizedFilePath = DriverUtils.getDistributedLibraryPath(file.getFile()).replace('\\', '/');
+                                }
                                 xml.addAttribute(
                                     RegistryConstants.ATTR_PATH,
-                                    substitutePathVariables(pathSubstitutions, file.getFile().toString()));
+                                    substitutePathVariables(pathSubstitutions, normalizedFilePath));
                                 if (file.getFileCRC() != 0) {
                                     xml.addAttribute("crc", Long.toHexString(file.getFileCRC()));
                                 }
@@ -230,9 +248,6 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
         DriverDescriptor curDriver;
         DBPDriverLibrary curLibrary;
         private boolean isLibraryUpgraded = false;
-        private final boolean isDistributed = DBWorkbench.isDistributed();
-        // In detached process we usually have just one driver
-        private final boolean isDetachedProcess = DBWorkbench.getPlatform().getApplication().isDetachedProcess();
 
         public DriversParser(boolean provided) {
             this.providedDrivers = provided;
@@ -279,7 +294,10 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                     if (curDriver == null) {
                         curDriver = new DriverDescriptor(curProvider, idAttr);
                         curProvider.addDriver(curDriver);
+                    } else if (DBWorkbench.isDistributed() || DBWorkbench.getPlatform().getApplication().isMultiuser()) {
+                        curDriver.resetDriverInstance();
                     }
+
                     if (providedDrivers || curProvider.isDriversManagable()) {
                         String category = atts.getValue(RegistryConstants.ATTR_CATEGORY);
                         if (!CommonUtils.isEmpty(category)) {
@@ -300,6 +318,7 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                         curDriver.setAnonymousAccess(CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_ANONYMOUS), curDriver.isAnonymousAccess()));
                         curDriver.setAllowsEmptyPassword(CommonUtils.getBoolean(atts.getValue("allowsEmptyPassword"), curDriver.isAllowsEmptyPassword()));
                         curDriver.setInstantiable(CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_INSTANTIABLE), curDriver.isInstantiable()));
+                        curDriver.setThreadSafeDriver(CommonUtils.getBoolean(atts.getValue("threadSafe"), curDriver.isThreadSafeDriver()));
                     }
                     if (atts.getValue(RegistryConstants.ATTR_CUSTOM_DRIVER_LOADER) != null) {
                         curDriver.setCustomDriverLoader((

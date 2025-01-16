@@ -19,10 +19,7 @@ package org.jkiss.dbeaver.model.security;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
-import org.jkiss.dbeaver.model.security.user.SMTeam;
-import org.jkiss.dbeaver.model.security.user.SMUser;
-import org.jkiss.dbeaver.model.security.user.SMUserFilter;
-import org.jkiss.dbeaver.model.security.user.SMUserImportList;
+import org.jkiss.dbeaver.model.security.user.*;
 
 import java.util.List;
 import java.util.Map;
@@ -44,7 +41,7 @@ public interface SMAdminController extends SMController {
      * @throws DBException the db exception
      */
     @NotNull
-    SMTeam[] getUserTeams(String userId) throws DBException;
+    SMUserTeam[] getUserTeams(String userId) throws DBException;
 
     /**
      * Create user.
@@ -69,6 +66,13 @@ public interface SMAdminController extends SMController {
     void invalidateAllTokens() throws DBException;
 
     void setUserTeams(String userId, String[] teamIds, String grantorId) throws DBException;
+
+    void addUserTeams(@NotNull String userId, @NotNull String[] teamIds, @NotNull String grantorId) throws DBException;
+
+    void deleteUserTeams(@NotNull String userId, @NotNull String[] teamIds) throws DBException;
+
+    void setUserTeamRole(@NotNull String userId, @NotNull String teamId, @Nullable String teamRole) throws DBException;
+
 
     /**
      * Gets user by id.
@@ -99,10 +103,15 @@ public interface SMAdminController extends SMController {
 
     SMTeam findTeam(String teamId) throws DBException;
 
-    @NotNull
-    String[] getTeamMembers(String teamId) throws DBException;
-
-    void createTeam(String teamId, String name, String description, String grantor) throws DBException;
+    /**
+     * Creates a new team with specified team id that will be in lower-case.
+     */
+    SMTeam createTeam(
+        @NotNull String teamId,
+        @Nullable String name,
+        @Nullable String description,
+        @NotNull String grantor
+    ) throws DBException;
 
     void updateTeam(String teamId, String name, String description) throws DBException;
 
@@ -212,4 +221,8 @@ public interface SMAdminController extends SMController {
         @NotNull Set<String> subjectIds,
         @NotNull Set<String> permissions
     ) throws DBException;
+
+    @NotNull
+    List<SMTeamMemberInfo> getTeamMembersInfo(@NotNull String teamId) throws DBException;
+
 }

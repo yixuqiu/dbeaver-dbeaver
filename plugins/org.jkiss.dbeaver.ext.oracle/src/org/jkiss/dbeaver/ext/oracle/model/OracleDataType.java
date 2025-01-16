@@ -50,7 +50,7 @@ import java.util.Map;
  * Oracle data type
  */
 public class OracleDataType extends OracleObject<DBSObject>
-    implements DBSDataType, DBSEntity, DBPQualifiedObject, OracleSourceObject, DBPScriptObjectExt {
+    implements DBSDataType, DBSEntity, DBPQualifiedObject, OracleSourceObject, DBPScriptObjectExt, DBPImageProvider {
 
     private static final Log log = Log.getLog(OracleDataType.class);
 
@@ -63,28 +63,45 @@ public class OracleDataType extends OracleObject<DBSObject>
         final int precision;
         final int minScale;
         final int maxScale;
-        private TypeDesc(DBPDataKind dataKind, int valueType, int precision, int minScale, int maxScale)
-        {
+        final int serverAtLeastMajor;
+        final int serverAtLeastMinor;
+
+        private TypeDesc(@NotNull DBPDataKind dataKind, int valueType, int precision, int minScale, int maxScale) {
+            this(dataKind, valueType, precision, minScale, maxScale, -1, -1);
+        }
+
+        private TypeDesc(
+            @NotNull DBPDataKind dataKind,
+            int valueType,
+            int precision,
+            int minScale,
+            int maxScale,
+            int serverAtLeastMajor,
+            int serverAtLeastMinor
+        ) {
             this.dataKind = dataKind;
             this.valueType = valueType;
             this.precision = precision;
             this.minScale = minScale;
             this.maxScale = maxScale;
+            this.serverAtLeastMajor = serverAtLeastMajor;
+            this.serverAtLeastMinor = serverAtLeastMinor;
         }
     }
 
     static final Map<String, TypeDesc> PREDEFINED_TYPES = new HashMap<>();
-    static final Map<Integer, TypeDesc> PREDEFINED_TYPE_IDS = new HashMap<>();
     static  {
         PREDEFINED_TYPES.put("BFILE", new TypeDesc(DBPDataKind.CONTENT, Types.OTHER, 0, 0, 0));
         PREDEFINED_TYPES.put("BINARY ROWID", new TypeDesc(DBPDataKind.ROWID, Types.ROWID, 0, 0, 0));
         PREDEFINED_TYPES.put("BINARY_DOUBLE", new TypeDesc(DBPDataKind.NUMERIC, Types.DOUBLE, 38, 127, -84));
         PREDEFINED_TYPES.put("BINARY_FLOAT", new TypeDesc(DBPDataKind.NUMERIC, Types.FLOAT, 38, 127, -84));
         PREDEFINED_TYPES.put("BLOB", new TypeDesc(DBPDataKind.CONTENT, Types.BLOB, 0, 0, 0));
+        PREDEFINED_TYPES.put("BOOLEAN", new TypeDesc(DBPDataKind.BOOLEAN, Types.BOOLEAN, 0, 0, 0, 23, 0));
         PREDEFINED_TYPES.put("CANONICAL", new TypeDesc(DBPDataKind.UNKNOWN, Types.OTHER, 0, 0, 0));
         PREDEFINED_TYPES.put("CFILE", new TypeDesc(DBPDataKind.CONTENT, Types.OTHER, 0, 0, 0));
         PREDEFINED_TYPES.put("CHAR", new TypeDesc(DBPDataKind.STRING, Types.CHAR, 0, 0, 0));
         PREDEFINED_TYPES.put("CLOB", new TypeDesc(DBPDataKind.CONTENT, Types.CLOB, 0, 0, 0));
+        PREDEFINED_TYPES.put("JSON", new TypeDesc(DBPDataKind.CONTENT, Types.OTHER, 0, 0, 0));
         PREDEFINED_TYPES.put("CONTIGUOUS ARRAY", new TypeDesc(DBPDataKind.ARRAY, Types.ARRAY, 0, 0, 0));
         // DATE IS TIMESTAMP. It always keeps time value. But sometimes it is visualized as DATE (see #2457)
         PREDEFINED_TYPES.put("DATE", new TypeDesc(DBPDataKind.DATETIME, Types.TIMESTAMP, 0, 0, 0));
@@ -130,10 +147,6 @@ public class OracleDataType extends OracleObject<DBSObject>
         PREDEFINED_TYPES.put("LOB POINTER", new TypeDesc(DBPDataKind.CONTENT, Types.BLOB, 0, 0, 0));
 
         PREDEFINED_TYPES.put("REF CURSOR", new TypeDesc(DBPDataKind.OBJECT, -10, 0, 0, 0));
-
-        for (TypeDesc type : PREDEFINED_TYPES.values()) {
-            PREDEFINED_TYPE_IDS.put(type.valueType, type);
-        }
     }
     
     private String typeCode;
@@ -459,7 +472,11 @@ public class OracleDataType extends OracleObject<DBSObject>
     public List<OracleDataTypeAttribute> getAttributes(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
-        return attributeCache != null ? attributeCache.getAllObjects(monitor, this) : null;
+        return !supportsAttributes() || attributeCache == null ? null : attributeCache.getAllObjects(monitor, this);
+    }
+
+    private boolean supportsAttributes() {
+        return getTypeID() == Types.STRUCT;
     }
 
     @Nullable
@@ -569,7 +586,7 @@ public class OracleDataType extends OracleObject<DBSObject>
                 log.error(e);
             }
         } else {
-            type = (OracleDataType)dataSource.getLocalDataType(typeName);
+            type = dataSource.getLocalDataType(typeName);
         }
         if (type == null) {
             log.debug("Data type '" + typeName + "' not found - declare new one");
@@ -615,6 +632,15 @@ public class OracleDataType extends OracleObject<DBSObject>
     {
 
     }
+
+    @Override
+    public DBPImage getObjectImage() {
+        if (OracleConstants.TYPE_NAME_JSON.equals(getName())) {
+            return DBIcon.TYPE_JSON;
+        }
+        return null;
+    }
+
 
     private class AttributeCache extends JDBCObjectCache<OracleDataType, OracleDataTypeAttribute> {
         @NotNull

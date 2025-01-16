@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ext.mssql.model.session;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.mssql.SQLServerConstants;
 import org.jkiss.dbeaver.ext.mssql.model.SQLServerDataSource;
@@ -29,6 +30,7 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.utils.CommonUtils;
 
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -72,21 +74,27 @@ public class SQLServerSessionManager implements DBAServerSessionManager<SQLServe
                 }
             }
         } catch (SQLException e) {
-            throw new DBException(e, session.getDataSource());
+            throw new DBDatabaseException(e, session.getDataSource());
         }
     }
 
     @Override
-    public void alterSession(@NotNull DBCSession session, @NotNull SQLServerSession sessionType, @NotNull Map<String, Object> options) throws DBException
+    public void alterSession(@NotNull DBCSession session, @NotNull String sessionId, @NotNull Map<String, Object> options) throws DBException
     {
         try {
             try (Statement dbStat = ((JDBCSession) session).createStatement()) {
-                dbStat.execute("KILL " + sessionType.getId() + "");
+                dbStat.execute("KILL " + sessionId + "");
             }
         }
         catch (SQLException e) {
-            throw new DBException(e, session.getDataSource());
+            throw new DBDatabaseException(e, session.getDataSource());
         }
+    }
+
+    @NotNull
+    @Override
+    public Map<String, Object> getTerminateOptions() {
+        return Map.of();
     }
 
     @Override

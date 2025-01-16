@@ -24,6 +24,7 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.data.*;
+import org.jkiss.dbeaver.model.data.json.JSONUtils;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.DBCResultSet;
 import org.jkiss.dbeaver.model.exec.DBCSession;
@@ -169,7 +170,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         if (processor instanceof IDocumentDataExporter) {
             columnBindings = DBUtils.injectAndFilterAttributeBindings(session.getDataSource(), dataContainer, columnMetas, true);
         } else {
-            columnBindings = DBUtils.makeLeafAttributeBindings(session, dataContainer, resultSet);
+            columnBindings = DTUtils.makeLeafAttributeBindings(session, dataContainer, resultSet);
         }
 
         final StreamMappingContainer mapping = settings.getDataMapping(dataContainer);
@@ -362,19 +363,18 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         if (settings.getFormatterProfile() != null && session instanceof DBDFormatSettingsExt) {
             ((DBDFormatSettingsExt)session).setDataFormatterProfile(settings.getFormatterProfile());
         }
-
-        exportSite = new StreamExportSite();
-
-        // Open output streams
-        boolean outputClipboard = settings.isOutputClipboard();
-        if (parameters.isBinary || !outputClipboard) {
-            outputFile = makeOutputFile(session.getProgressMonitor());
-            outputFiles.add(outputFile);
-        } else {
-            outputFile = null;
-        }
-
         try {
+            exportSite = new StreamExportSite();
+
+            // Open output streams
+            boolean outputClipboard = settings.isOutputClipboard();
+            if (parameters.isBinary || !outputClipboard) {
+                outputFile = makeOutputFile(session.getProgressMonitor());
+                outputFiles.add(outputFile);
+            } else {
+                outputFile = null;
+            }
+
             if (outputClipboard) {
                 this.outputBuffer = new StringWriter(2048);
                 this.writer = new PrintWriter(this.outputBuffer, true);
@@ -497,8 +497,10 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
 
         OutputStream stream;
         if (!fileExists) {
+            log.debug("Export to the new file \"" + outputFile + "\"");
             stream = Files.newOutputStream(outputFile, StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW);
         } else {
+            log.debug("Export to the existing file \"" + outputFile + "\"");
             stream = Files.newOutputStream(
                 outputFile,
                 StandardOpenOption.WRITE,
@@ -508,6 +510,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         this.outputStream = this.statStream = new StatOutputStream(outputStream);
 
         if (settings.isCompressResults()) {
+            log.debug("\tUse ZIP compression");
             this.zipStream = new ZipOutputStream(this.outputStream);
             this.zipStream.putNextEntry(new ZipEntry(getOutputFileName()));
             this.outputStream = zipStream;
@@ -520,6 +523,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
 
         // Check for BOM and write it to the stream
         if (!parameters.isBinary && settings.isOutputEncodingBOM()) {
+            log.debug("\tInsert BOM into output stream");
             try {
                 final ByteOrderMark bom = ByteOrderMark.fromCharset(settings.getOutputEncoding());
                 outputStream.write(bom.getBytes());
@@ -535,6 +539,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     }
 
     private void closeOutputStreams() {
+        log.debug("\tClose output stream");
         if (this.writer != null) {
             this.writer.flush();
         }
@@ -741,12 +746,12 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     }
 
     @NotNull
-    public Path makeOutputFile(@NotNull DBRProgressMonitor monitor) {
+    public Path makeOutputFile(@NotNull DBRProgressMonitor monitor) throws IOException {
         return makeOutputFile(monitor, null);
     }
     
     @NotNull
-    private Path makeOutputFile(@NotNull DBRProgressMonitor monitor, @Nullable String suffix) {
+    private Path makeOutputFile(@NotNull DBRProgressMonitor monitor, @Nullable String suffix) throws IOException {
         final Path file = makeOutputFile(monitor, suffix, getOutputFolder());
 
         if (!Files.exists(file)) {
@@ -766,19 +771,20 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     }
 
     @NotNull
-    private Path makeOutputFile(@NotNull DBRProgressMonitor monitor, @Nullable String suffix, @NotNull String outputFolder) {
+    private Path makeOutputFile(@NotNull DBRProgressMonitor monitor, @Nullable String suffix, @NotNull String outputFolder) throws IOException {
         Path dir;
         try {
             dir = DBFUtils.resolvePathFromString(monitor, getProject(), outputFolder);
         } catch (Exception e) {
             log.error("Error resolving output folder", e);
-            dir = Path.of(outputFolder);
+            throw new IOException(e.getMessage(), e);
         }
         if (!Files.exists(dir)) {
             try {
                 Files.createDirectories(dir);
             } catch (IOException e) {
                 log.error("Error creating output folder", e);
+                throw new IOException(e.getMessage(), e);
             }
         }
         String fileName = getOutputFileName(suffix);
@@ -1063,16 +1069,23 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
                                 final byte[] bytes = buffer.toByteArray();
                                 final String binaryString = dataSource.getSQLDialect().getNativeBinaryFormatter().toString(bytes, 0, bytes.length);
                                 writer.write(binaryString);
-                                break;
-                            }
-                        }
-                        default: {
-                            // Binary stream
-                            try (Reader reader = new InputStreamReader(stream, cs.getCharset())) {
-                                IOUtils.copyText(reader, writer);
                             }
                             break;
                         }
+                        case BINARY:
+                        default: {
+                            byte[] readBuffer = new byte[1000];
+                            for (; ; ) {
+                                int count = stream.read(readBuffer);
+                                if (count <= 0) {
+                                    break;
+                                }
+                                String content = new String(readBuffer, 0, count, cs.getCharset());
+                                String contentAfterEscaping = JSONUtils.escapeJsonString(content);
+                                writer.write(contentAfterEscaping);
+                            }
+                        }
+                        break;
                     }
                 }
             }

@@ -26,6 +26,7 @@ import org.jkiss.dbeaver.model.DBFileController;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.app.DBPApplication;
 import org.jkiss.dbeaver.model.app.DBPApplicationConfigurator;
+import org.jkiss.dbeaver.model.app.DBPDataFormatterRegistry;
 import org.jkiss.dbeaver.model.app.DBPPlatform;
 import org.jkiss.dbeaver.model.connection.DBPDataSourceProviderRegistry;
 import org.jkiss.dbeaver.model.data.DBDRegistry;
@@ -39,6 +40,7 @@ import org.jkiss.dbeaver.model.runtime.OSDescriptor;
 import org.jkiss.dbeaver.model.sql.SQLDialectMetadataRegistry;
 import org.jkiss.dbeaver.model.task.DBTTaskController;
 import org.jkiss.dbeaver.registry.datatype.DataTypeProviderRegistry;
+import org.jkiss.dbeaver.registry.formatter.DataFormatterRegistry;
 import org.jkiss.dbeaver.registry.fs.FileSystemProviderRegistry;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerRegistry;
 import org.jkiss.dbeaver.runtime.IPluginService;
@@ -95,7 +97,7 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPApplicationCon
         });
 
         // Navigator model
-        this.navigatorModel = new DBNModel(this, null);
+        this.navigatorModel = createNavigatorModel();
         this.navigatorModel.setModelAuthContext(getWorkspace().getAuthContext());
         this.navigatorModel.initialize();
 
@@ -108,6 +110,10 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPApplicationCon
                 new DataSourceMonitorJob(this).scheduleMonitor();
             }
         }
+    }
+
+    protected DBNModel createNavigatorModel() {
+        return new DBNModel(this, null);
     }
 
     protected void activatePluginServices() {
@@ -134,7 +140,12 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPApplicationCon
 
         // Dispose navigator model first
         // It is a part of UI
-        if (this.navigatorModel != null) {
+        disposeNavigatorModel();
+    }
+
+    public void disposeNavigatorModel() {
+        if (this.navigatorModel != null && this.navigatorModel.getRoot() != null) {
+            log.debug("Dispose navigator model");
             this.navigatorModel.dispose();
             //this.navigatorModel = null;
         }
@@ -218,11 +229,14 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPApplicationCon
             return ((DBPApplicationConfigurator) application).createConfigurationController(pluginBundleName);
         } else if (bundle == null) {
             LocalConfigurationController controller = new LocalConfigurationController(
-                getWorkspace().getMetadataFolder().resolve(CONFIG_FOLDER)
+                getLocalWorkspaceConfigFolder()
             );
             Plugin productPlugin = getProductPlugin();
-            if (productPlugin != null && productPlugin.getStateLocation() != null) {
-                controller.setLegacyConfigFolder(productPlugin.getStateLocation().toFile().toPath());
+            if (productPlugin != null) {
+                Path pluginStateLocation = RuntimeUtils.getPluginStateLocation(productPlugin);
+                if (Files.exists(pluginStateLocation)) {
+                    controller.setLegacyConfigFolder(pluginStateLocation);
+                }
             }
             return controller;
         } else {
@@ -230,6 +244,10 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPApplicationCon
                 Platform.getStateLocation(bundle).toFile().toPath()
             );
         }
+    }
+
+    private @NotNull Path getLocalWorkspaceConfigFolder() {
+        return getWorkspace().getMetadataFolder().resolve(CONFIG_FOLDER);
     }
 
     @NotNull
@@ -257,7 +275,11 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPApplicationCon
     @NotNull
     @Override
     public Path getLocalConfigurationFile(String fileName) {
-        return getProductPlugin().getStateLocation().toFile().toPath().resolve(fileName);
+        Path productPluginPath = RuntimeUtils.getPluginStateLocation(getProductPlugin()).resolve(fileName);
+        if (Files.exists(productPluginPath)) {
+            return productPluginPath;
+        }
+        return getLocalWorkspaceConfigFolder().resolve(fileName);
     }
 
     @NotNull
@@ -296,6 +318,12 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPApplicationCon
             iniFile = configPath.resolve(APP_CONFIG_FILE);
         }
         return iniFile;
+    }
+
+    @NotNull
+    @Override
+    public DBPDataFormatterRegistry getDataFormatterRegistry() {
+        return DataFormatterRegistry.getInstance();
     }
 
     @NotNull

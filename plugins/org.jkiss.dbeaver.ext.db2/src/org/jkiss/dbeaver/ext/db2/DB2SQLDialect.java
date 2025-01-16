@@ -22,6 +22,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.db2.model.DB2Routine;
+import org.jkiss.dbeaver.model.DBPDataKind;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.data.DBDBinaryFormatter;
@@ -32,6 +33,7 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCStatement;
 import org.jkiss.dbeaver.model.impl.data.formatters.BinaryFormatterHexString;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCSQLDialect;
+import org.jkiss.dbeaver.model.sql.SQLConstants;
 import org.jkiss.dbeaver.model.sql.parser.rules.SQLMultiWordRule;
 import org.jkiss.dbeaver.model.sql.parser.tokens.SQLTokenType;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedure;
@@ -48,7 +50,7 @@ import java.util.Set;
 
 /**
  * DB2 SQL dialect
- * 
+ *
  * @author Denis Forveille
  * 
  */
@@ -58,7 +60,16 @@ public class DB2SQLDialect extends JDBCSQLDialect implements TPRuleProvider {
 
     public static final String[] EXEC_KEYWORDS = new String[]{"CALL"};
 
+    private static final GlobalVariableInfo[] GLOBAL_VARIABLES = {
+        new GlobalVariableInfo("CLIENT_IPADDR", DB2Messages.global_variable_client_ipaddr_description, DBPDataKind.STRING)
+    };
+
     private static final boolean LOAD_ROUTINES_FROM_SYSCAT = false;
+    private static final String[][] BEGIN_END_BLOCK = new String[][]{
+        {SQLConstants.BLOCK_BEGIN, SQLConstants.BLOCK_END},
+        {SQLConstants.KEYWORD_CASE, SQLConstants.BLOCK_END}
+    };
+
 
     public DB2SQLDialect() {
         super("Db2 for LUW", "db2_luw");
@@ -74,8 +85,7 @@ public class DB2SQLDialect extends JDBCSQLDialect implements TPRuleProvider {
 
     @NotNull
     @Override
-    public MultiValueInsertMode getDefaultMultiValueInsertMode()
-    {
+    public MultiValueInsertMode getDefaultMultiValueInsertMode() {
         return MultiValueInsertMode.GROUP_ROWS;
     }
 
@@ -86,9 +96,19 @@ public class DB2SQLDialect extends JDBCSQLDialect implements TPRuleProvider {
 
     @NotNull
     @Override
-    public String[] getExecuteKeywords()
-    {
+    public String[] getExecuteKeywords() {
         return EXEC_KEYWORDS;
+    }
+
+    @NotNull
+    @Override
+    public GlobalVariableInfo[] getGlobalVariables() {
+        return GLOBAL_VARIABLES;
+    }
+
+    @Override
+    public String[][] getBlockBoundStrings() {
+        return BEGIN_END_BLOCK;
     }
 
     @Override
@@ -152,7 +172,7 @@ public class DB2SQLDialect extends JDBCSQLDialect implements TPRuleProvider {
 
     @Override
     public String getScriptDelimiterRedefiner() {
-    	return "--#SET TERMINATOR";
+        return "--#SET TERMINATOR";
     }
 
     @NotNull

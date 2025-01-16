@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.hsqldb.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.generic.model.*;
@@ -41,6 +42,8 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * HSQLMetaModel
@@ -48,7 +51,7 @@ import java.util.Map;
 public class HSQLMetaModel extends GenericMetaModel
 {
     private static final Log log = Log.getLog(HSQLMetaModel.class);
-    private static final String PROHIBITED_FUNCTION = "jdbc:hsqldb:file";
+    private static final Pattern PROHIBITED_PATTERN = Pattern.compile("jdbc:hsqldb:(file|mem|res)");
 
     public HSQLMetaModel() {
         super();
@@ -58,15 +61,19 @@ public class HSQLMetaModel extends GenericMetaModel
     public GenericDataSource createDataSourceImpl(DBRProgressMonitor monitor, DBPDataSourceContainer container) throws DBException {
         if (DBWorkbench.getPlatform().getApplication().isMultiuser()) {
             String url = container.getConnectionConfiguration().getUrl();
-            if (!container.getDriver().isEmbedded() && url != null && url.contains(PROHIBITED_FUNCTION)) {
-                throw new DBException("File is forbidden for this driver, use embedded driver");
+            if (!container.getDriver().isEmbedded() && url != null) {
+                final Matcher matcher = PROHIBITED_PATTERN.matcher(url);
+                if (matcher.find()) {
+                    throw new DBException("File access is not allowed for this driver. " +
+                        "Please use the embedded driver to access server files.");
+                }
             }
         }
         return new HSQLDataSource(monitor, container, this);
     }
 
     @Override
-    public String getViewDDL(DBRProgressMonitor monitor, GenericView sourceObject, Map<String, Object> options) throws DBException {
+    public String getViewDDL(@NotNull DBRProgressMonitor monitor, @NotNull GenericView sourceObject, @NotNull Map<String, Object> options) throws DBException {
         GenericDataSource dataSource = sourceObject.getDataSource();
         try (JDBCSession session = DBUtils.openMetaSession(monitor, sourceObject, "Read HSQLDB view source")) {
             try (JDBCPreparedStatement dbStat = session.prepareStatement(
@@ -83,7 +90,7 @@ public class HSQLMetaModel extends GenericMetaModel
                 }
             }
         } catch (SQLException e) {
-            throw new DBException(e, dataSource);
+            throw new DBDatabaseException(e, dataSource);
         }
     }
 
@@ -115,7 +122,7 @@ public class HSQLMetaModel extends GenericMetaModel
                 }
             }
         } catch (SQLException e) {
-            throw new DBException(e, dataSource);
+            throw new DBDatabaseException(e, dataSource);
         }
     }
 
@@ -141,7 +148,7 @@ public class HSQLMetaModel extends GenericMetaModel
                 }
             }
         } catch (SQLException e) {
-            throw new DBException(e, dataSource);
+            throw new DBDatabaseException(e, dataSource);
         }
     }
 
@@ -197,7 +204,13 @@ public class HSQLMetaModel extends GenericMetaModel
     }
 
     @Override
-    public GenericTrigger createTableTriggerImpl(@NotNull JDBCSession session, @NotNull GenericStructContainer genericStructContainer, @NotNull GenericTableBase genericTableBase, String triggerName, @NotNull JDBCResultSet resultSet) throws DBException {
+    public GenericTrigger createTableTriggerImpl(
+        @NotNull JDBCSession session,
+        @NotNull GenericStructContainer genericStructContainer,
+        @NotNull GenericTableBase genericTableBase,
+        String triggerName,
+        @NotNull JDBCResultSet resultSet
+    ) throws DBException {
         if (CommonUtils.isEmpty(triggerName)) {
             triggerName = JDBCUtils.safeGetString(resultSet, "TRIGGER_NAME");
         }
@@ -243,7 +256,7 @@ public class HSQLMetaModel extends GenericMetaModel
 
             }
         } catch (SQLException e) {
-            throw new DBException(e, container.getDataSource());
+            throw new DBDatabaseException(e, container.getDataSource());
         }
     }
 

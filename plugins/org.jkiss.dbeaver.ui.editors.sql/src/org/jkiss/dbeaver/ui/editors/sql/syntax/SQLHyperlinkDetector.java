@@ -25,13 +25,13 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPKeywordType;
 import org.jkiss.dbeaver.model.impl.struct.DirectObjectReference;
 import org.jkiss.dbeaver.model.sql.parser.SQLIdentifierDetector;
-import org.jkiss.dbeaver.model.struct.DBSObjectReference;
-import org.jkiss.dbeaver.ui.editors.entity.EntityHyperlink;
-import org.jkiss.dbeaver.ui.editors.sql.SQLEditorBase;
 import org.jkiss.dbeaver.model.sql.semantics.SQLDocumentSyntaxContext;
 import org.jkiss.dbeaver.model.sql.semantics.SQLQuerySymbolByDbObjectDefinition;
 import org.jkiss.dbeaver.model.sql.semantics.SQLQuerySymbolEntry;
-import org.jkiss.dbeaver.model.sql.semantics.model.SQLQueryRowsTableDataModel;
+import org.jkiss.dbeaver.model.sql.semantics.model.select.SQLQueryRowsTableDataModel;
+import org.jkiss.dbeaver.model.struct.DBSObjectReference;
+import org.jkiss.dbeaver.ui.editors.entity.EntityHyperlink;
+import org.jkiss.dbeaver.ui.editors.sql.SQLEditorBase;
 
 import java.util.List;
 
@@ -42,9 +42,9 @@ import java.util.List;
 public class SQLHyperlinkDetector extends AbstractHyperlinkDetector {
     static protected final Log log = Log.getLog(SQLHyperlinkDetector.class);
 
-    private SQLContextInformer contextInformer;
+    private final SQLContextInformer contextInformer;
 
-    public SQLHyperlinkDetector(SQLEditorBase editor, SQLContextInformer contextInformer) {
+    public SQLHyperlinkDetector(SQLContextInformer contextInformer) {
         this.contextInformer = contextInformer;
     }
 
