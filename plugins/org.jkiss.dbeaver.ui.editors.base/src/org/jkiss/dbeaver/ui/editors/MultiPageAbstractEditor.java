@@ -32,7 +32,9 @@ import org.eclipse.ui.*;
 import org.eclipse.ui.part.MultiPageEditorPart;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.ui.BaseThemeSettings;
 import org.jkiss.dbeaver.ui.IActiveWorkbenchPart;
+import org.jkiss.dbeaver.ui.UIFonts;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.screenreaders.ScreenReader;
 import org.jkiss.dbeaver.ui.screenreaders.ScreenReaderPreferences;
@@ -48,15 +50,14 @@ public abstract class MultiPageAbstractEditor extends MultiPageEditorPart {
     private ImageDescriptor curTitleImage;
     private final List<Image> oldImages = new ArrayList<>();
     private int activePageIndex = -1;
-    private List<CTabItem> tabsList = new ArrayList<>();
+    private final List<CTabItem> tabsList = new ArrayList<>();
 
     @Override
     public void init(IEditorSite site, IEditorInput input) throws PartInitException {
         if (getEditorInput() == null) {
             super.init(site, input);
         } else {
-            // Pages re-initialization. Do not call init bcause it recreates selection
-            // provider
+            // Pages re-initialization. Do not call init because it recreates selection provider
             setSite(site);
             setInput(input);
         }
@@ -120,10 +121,22 @@ public abstract class MultiPageAbstractEditor extends MultiPageEditorPart {
         this.setContainerStyles();
     }
 
+    @Override
+    protected CTabFolder createContainer(Composite parent) {
+        CTabFolder container = super.createContainer(parent);
+
+        BaseThemeSettings.instance.addPropertyListener(
+            UIFonts.DBEAVER_FONTS_MAIN_FONT,
+            s -> container.setFont(BaseThemeSettings.instance.baseFont),
+            container
+        );
+        return container;
+    }
+
     protected void setContainerStyles() {
         Composite pageContainer = getContainer();
-        if (pageContainer instanceof CTabFolder && !pageContainer.isDisposed()) {
-            CTabFolder tabFolder = (CTabFolder) pageContainer;
+        if (pageContainer instanceof CTabFolder tabFolder && !pageContainer.isDisposed()) {
+            tabFolder.setFont(BaseThemeSettings.instance.baseFont);
             tabFolder.setSimple(true);
             tabFolder.setMRUVisible(true);
             tabFolder.setTabPosition(SWT.TOP);

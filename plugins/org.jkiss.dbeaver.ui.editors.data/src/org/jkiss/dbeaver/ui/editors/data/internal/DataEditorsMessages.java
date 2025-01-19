@@ -16,7 +16,7 @@
  */
 package org.jkiss.dbeaver.ui.editors.data.internal;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class DataEditorsMessages extends NLS {
 	static final String BUNDLE_NAME = "org.jkiss.dbeaver.ui.editors.data.internal.DataEditorsResources"; //$NON-NLS-1$
@@ -58,8 +58,6 @@ public class DataEditorsMessages extends NLS {
     public static String pref_page_database_resultsets_label_show_attr_ordering_tip;
     public static String pref_page_database_resultsets_label_use_smooth_scrolling;
     public static String pref_page_database_resultsets_label_use_smooth_scrolling_tip;
-    public static String pref_page_database_resultsets_label_show_collections_inline;
-    public static String pref_page_database_resultsets_label_show_collections_inline_tip;
     public static String pref_page_database_resultsets_label_show_boolean_as_checkbox;
     public static String pref_page_database_resultsets_label_show_boolean_as_checkbox_tip;
     public static String pref_page_database_resultsets_label_show_whitespace_characters;

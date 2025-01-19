@@ -24,7 +24,6 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
-import org.jkiss.dbeaver.model.app.DBPPlatformDesktop;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
@@ -198,6 +197,11 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
 
     }
 
+    @Override
+    public boolean isExtraMetadataReadEnabled() {
+        return false;
+    }
+
     @Nullable
     @Override
     public DBSObjectFilter getObjectFilter(Class<?> type, @Nullable DBSObject parentObject, boolean firstMatch) {
@@ -207,6 +211,17 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
     @Override
     public void setObjectFilter(Class<?> type, DBSObject parentObject, DBSObjectFilter filter) {
 
+    }
+
+    @Nullable
+    @Override
+    public String getClientApplicationName() {
+        return null;
+    }
+
+    @Override
+    public void setClientApplicationName(@NotNull String applicationName) {
+        // noop
     }
 
     @Override
@@ -227,6 +242,11 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
 
     @Override
     public boolean isConnected() {
+        return false;
+    }
+
+    @Override
+    public boolean isConnecting() {
         return false;
     }
 
@@ -352,6 +372,11 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
     }
 
     @Override
+    public void resetAllSecrets() {
+
+    }
+
+    @Override
     public IVariableResolver getVariablesResolver(boolean actualConfig) {
         return null;
     }
@@ -405,7 +430,7 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
 
     @Override
     public DBDDataFormatterProfile getDataFormatterProfile() {
-        return DBPPlatformDesktop.getInstance().getDataFormatterRegistry().getGlobalProfile();
+        return DBWorkbench.getPlatform().getDataFormatterRegistry().getGlobalProfile();
     }
 
     @Override
@@ -446,6 +471,16 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
 
     @Override
     public void setSharedCredentials(boolean sharedCredentials) {
+
+    }
+
+    @Override
+    public boolean isSharedCredentialsSelected() {
+        return false;
+    }
+
+    @Override
+    public void setSelectedSharedCredentials(@NotNull DBSSecretValue secretValue) {
 
     }
 

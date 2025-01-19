@@ -160,11 +160,13 @@
         <provider
                 class="org.jkiss.dbeaver.ext.hana.model.data.HANAValueHandlerProvider"
                 description="%provider.data.type.hana.description"
-                id="org.jkiss.dbeaver.ext.hana.model.data.HANAValueHandlerProvider"
+                id="HANAValueHandlerProvider"
+                parent="GenericValueHandlerProvider"
                 label="%provider.data.type.hana.name">
 
             <datasource id="hana"/>
 
+            <type name="real_vector"/>
             <type name="ST_Geometry"/>
             <type name="ST_Point"/>
         </provider>

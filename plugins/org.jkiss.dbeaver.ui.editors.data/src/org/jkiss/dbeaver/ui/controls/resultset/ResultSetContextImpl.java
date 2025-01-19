@@ -23,8 +23,9 @@ import org.jkiss.dbeaver.model.data.DBDAttributeContentTypeProvider;
 import org.jkiss.dbeaver.model.data.DBDValueHandler;
 import org.jkiss.dbeaver.model.exec.DBCResultSet;
 import org.jkiss.dbeaver.model.exec.trace.DBCTrace;
-import org.jkiss.dbeaver.model.impl.sql.RelationalSQLDialect;
+import org.jkiss.dbeaver.model.exec.trace.DBCTraceDynamic;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
+import org.jkiss.dbeaver.model.sql.SQLDialectRelational;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.Pair;
@@ -55,7 +56,7 @@ class ResultSetContextImpl implements IResultSetContext {
         DBPDataSource dataSource = viewer.getDataSource();
         if (dataSource != null) {
             SQLDialect sqlDialect = dataSource.getSQLDialect();
-            return sqlDialect instanceof RelationalSQLDialect && ((RelationalSQLDialect) sqlDialect).supportsGroupBy();
+            return sqlDialect instanceof SQLDialectRelational && ((SQLDialectRelational) sqlDialect).supportsGroupBy();
         }
         return false;
     }
@@ -72,7 +73,7 @@ class ResultSetContextImpl implements IResultSetContext {
     @Override
     public boolean supportsTrace() {
         DBCTrace trace = viewer.getModel().getTrace();
-        return (trace != null);
+        return trace instanceof DBCTraceDynamic td && td.hasDynamicProperties();
     }
 
     @Override

@@ -20,6 +20,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.ext.mysql.MySQLConstants;
 import org.jkiss.dbeaver.model.DBPDataSource;
+import org.jkiss.dbeaver.model.DBPIdentifierCase;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCDatabaseMetaData;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
@@ -27,6 +28,7 @@ import org.jkiss.dbeaver.model.impl.jdbc.JDBCSQLDialect;
 import org.jkiss.dbeaver.model.impl.sql.BasicSQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLConstants;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
+import org.jkiss.dbeaver.model.sql.SQLDialectDDLExtension;
 import org.jkiss.dbeaver.model.sql.SQLDialectSchemaController;
 import org.jkiss.dbeaver.model.struct.DBSTypedObject;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedure;
@@ -42,7 +44,7 @@ import java.util.regex.Pattern;
 /**
  * MySQL dialect
  */
-public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaController {
+public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaController, SQLDialectDDLExtension {
 
     public static final String[] MYSQL_NON_TRANSACTIONAL_KEYWORDS = ArrayUtils.concatArrays(
         BasicSQLDialect.NON_TRANSACTIONAL_KEYWORDS,
@@ -62,59 +64,59 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
     };
 
     public static final String[][] MYSQL_QUOTE_STRINGS = {
-            {"`", "`"},
-            {"\"", "\""},
+        {"`", "`"},
+        {"\"", "\""},
     };
 
     private static final String[] MYSQL_EXTRA_FUNCTIONS = {
-            "ADDDATE",
-            "ADDTIME",
-            "ANY_VALUE",
-            "CAST",
-            "COALESCE",
-            "COLLATION",
-            "COMPRESS",
-            "DATE_ADD",
-            "DATE_SUB",
-            "DATEDIFF",
-            "EXTRACT",
-            "FIRST_VALUE",
-            "FORMAT",
-            "FOUND_ROWS",
-            "FROM_BASE64",
-            "GET_FORMAT",
-            "GROUP_CONCAT",
-            "HOUR",
-            "DAY",
-            "IFNULL",
-            "ISNULL",
-            "LAG",
-            "LAST_VALUE",
-            "LEAD",
-            "LEAST",
-            "LENGTH",
-            "MAKEDATE",
-            "MAKETIME",
-            "MINUTE",
-            "MONTH",
-            "NULLIF",
-            "RANDOM_BYTES",
-            "REPLACE",
-            "REGEXP_LIKE",
-            "REGEXP_INSTR",
-            "REGEXP_REPLACE",
-            "REGEXP_SUBSTR",
-            "SESSION_USER",
-            "SPACE",
-            "SUBSTR",
-            "SUBTIME",
-            "TIMEDIFF",
-            "TO_BASE64",
-            "TO_SECONDS",
-            "UUID",
-            "UUID_TO_BIN",
-            "WEEKOFYEAR",
-            "YEAR"
+        "ADDDATE",
+        "ADDTIME",
+        "ANY_VALUE",
+        "CAST",
+        "COALESCE",
+        "COLLATION",
+        "COMPRESS",
+        "DATE_ADD",
+        "DATE_SUB",
+        "DATEDIFF",
+        "EXTRACT",
+        "FIRST_VALUE",
+        "FORMAT",
+        "FOUND_ROWS",
+        "FROM_BASE64",
+        "GET_FORMAT",
+        "GROUP_CONCAT",
+        "HOUR",
+        "DAY",
+        "IFNULL",
+        "ISNULL",
+        "LAG",
+        "LAST_VALUE",
+        "LEAD",
+        "LEAST",
+        "LENGTH",
+        "MAKEDATE",
+        "MAKETIME",
+        "MINUTE",
+        "MONTH",
+        "NULLIF",
+        "RANDOM_BYTES",
+        "REPLACE",
+        "REGEXP_LIKE",
+        "REGEXP_INSTR",
+        "REGEXP_REPLACE",
+        "REGEXP_SUBSTR",
+        "SESSION_USER",
+        "SPACE",
+        "SUBSTR",
+        "SUBTIME",
+        "TIMEDIFF",
+        "TO_BASE64",
+        "TO_SECONDS",
+        "UUID",
+        "UUID_TO_BIN",
+        "WEEKOFYEAR",
+        "YEAR"
     };
 
     private static final String[] MYSQL_GEOMETRY_FUNCTIONS = {
@@ -158,7 +160,7 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
         "JSON_VALID",
         "JSON_VALUE"
     };
-    
+
     private static final Pattern ONE_OR_MORE_DIGITS_PATTERN = Pattern.compile("[0-9]+");
 
     private static final String[] EXEC_KEYWORDS =  { "CALL" };
@@ -167,7 +169,7 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
     public MySQLDialect() {
         super("MySQL", "mysql");
     }
-    
+
     public MySQLDialect(String name, String id) {
         super(name, id);
     }
@@ -188,7 +190,7 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
         addFunctions(Arrays.asList(MYSQL_EXTRA_FUNCTIONS));
         addFunctions(Arrays.asList(JSON_FUNCTIONS));
     }
-    
+
     @Override
     public void initDriverSettings(JDBCSession session, JDBCDataSource dataSource, JDBCDatabaseMetaData metaData) {
         initBaseDriverSettings(session, dataSource, metaData);
@@ -202,11 +204,17 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
         this.lowerCaseTableNames = ((MySQLDataSource) dataSource).getLowerCaseTableNames();
         this.setSupportsUnquotedMixedCase(lowerCaseTableNames != 2);
     }
-    
+
     @Nullable
     @Override
     public String[][] getIdentifierQuoteStrings() {
         return MYSQL_QUOTE_STRINGS;
+    }
+
+    @NotNull
+    @Override
+    public DBPIdentifierCase storesQuotedCase() {
+        return DBPIdentifierCase.MIXED;
     }
 
     @NotNull
@@ -243,14 +251,14 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
     }
 
     @Override
-    public boolean mustBeQuoted(String str, boolean forceCaseSensitive) {
+    public boolean mustBeQuoted(@NotNull String str, boolean forceCaseSensitive) {
         Matcher matcher = ONE_OR_MORE_DIGITS_PATTERN.matcher(str);
         if (matcher.lookingAt()) { // we should quote numeric names and names starts with number
             return true;
         }
         return super.mustBeQuoted(str, forceCaseSensitive);
     }
-    
+
     @NotNull
     @Override
     protected String quoteIdentifier(@NotNull String str, @NotNull String[][] quoteStrings) {
@@ -269,7 +277,7 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
         if (quotes != null) {
             string = string.replace(quotes[0], quotes[0] + quotes[0]);
         } else {
-            string = string.replace("'", "''").replace("`", "``");
+            string = super.escapeString(string);
         }
 
         return string.replaceAll("\\\\(?![_%?])", "\\\\\\\\");
@@ -328,6 +336,11 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
         return procedure.getProcedureType() == DBSProcedureType.PROCEDURE;
     }
 
+    @Override
+    public boolean supportsUuid() {
+        return false;
+    }
+
     @NotNull
     @Override
     public String escapeScriptValue(DBSTypedObject attribute, @NotNull Object value, @NotNull String strValue) {
@@ -371,5 +384,73 @@ public class MySQLDialect extends JDBCSQLDialect implements SQLDialectSchemaCont
             ProjectionAliasVisibilityScope.HAVING,
             ProjectionAliasVisibilityScope.ORDER_BY
         );
+    }
+
+    @Nullable
+    @Override
+    public String getAutoIncrementKeyword() {
+        return "AUTO_INCREMENT";
+    }
+
+    @Override
+    public boolean supportsCreateIfExists() {
+        return true;
+    }
+
+    @NotNull
+    @Override
+    public String getTimestampDataType() {
+        return "TIMESTAMP";
+    }
+
+    @NotNull
+    @Override
+    public String getBigIntegerType() {
+        return "BIGINT";
+    }
+
+    @NotNull
+    @Override
+    public String getClobDataType() {
+        return "TEXT";
+    }
+
+    @NotNull
+    @Override
+    public String getBlobDataType() {
+        return "BLOB";
+    }
+
+    @NotNull
+    @Override
+    public String getUuidDataType() {
+        return "CHAR(36)";
+    }
+
+    @NotNull
+    @Override
+    public String getBooleanDataType() {
+        return "TINYINT(1)";
+    }
+
+    @NotNull
+    @Override
+    public String getAlterColumnOperation() {
+        return "MODIFY";
+    }
+
+    @Override
+    public boolean supportsNoActionIndex() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsAlterColumnSet() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsAlterHasColumn() {
+        return true;
     }
 }

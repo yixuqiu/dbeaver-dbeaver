@@ -19,10 +19,13 @@ package org.jkiss.dbeaver.model.app;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.model.DBPAdaptable;
+import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.model.access.DBAPermissionRealm;
 import org.jkiss.dbeaver.model.auth.SMAuthSpace;
 import org.jkiss.dbeaver.model.auth.SMSession;
 import org.jkiss.dbeaver.model.auth.SMSessionContext;
+import org.jkiss.dbeaver.model.rm.RMConstants;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -67,11 +70,19 @@ public interface DBPWorkspace extends SMAuthSpace, DBAPermissionRealm
     @NotNull
     SMSessionContext getAuthContext();
 
+    void initializeProjects();
+
     void dispose();
 
     @Nullable
     default SMSession getWorkspaceSession() {
         return getAuthContext().findSpaceSession(this);
     }
+
+    default boolean canManageProjects() {
+        return hasRealmPermission(RMConstants.PERMISSION_PROJECT_ADMIN);
+    }
+
+    DBPImage getResourceIcon(DBPAdaptable resourceAdapter);
 
 }

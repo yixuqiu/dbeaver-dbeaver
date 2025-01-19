@@ -124,7 +124,7 @@ public class OpenAICompletionEngine extends AbstractAICompletionEngine<GPTComple
     }
 
     public String getModelName() {
-        return CommonUtils.toString(getSettings().getProperties().get(AIConstants.GPT_MODEL), GPTModel.GPT_TURBO16.getName());
+        return CommonUtils.toString(getSettings().getProperties().get(AIConstants.GPT_MODEL), GPTModel.GPT_TURBO.getName());
     }
 
     public boolean isValidConfiguration() {
@@ -156,15 +156,13 @@ public class OpenAICompletionEngine extends AbstractAICompletionEngine<GPTComple
         final DBCExecutionContext executionContext = context.getExecutionContext();
         DBSObjectContainer mainObject = getScopeObject(context, executionContext);
 
-        final GPTModel model = getModel();
         final DAICompletionMessage metadataMessage = MetadataProcessor.INSTANCE.createMetadataMessage(
             monitor,
             context,
             mainObject,
             formatter,
-            model.isChatAPI(),
-            getMaxTokens() - AIConstants.MAX_RESPONSE_TOKENS,
-            chatCompletion
+            getInstructions(chatCompletion),
+            getMaxTokens() - AIConstants.MAX_RESPONSE_TOKENS
         );
 
         final List<DAICompletionMessage> mergedMessages = new ArrayList<>();
@@ -186,7 +184,7 @@ public class OpenAICompletionEngine extends AbstractAICompletionEngine<GPTComple
             mainObject,
             completionText,
             formatter,
-            model.isChatAPI()
+            getModel().isChatAPI()
         );
     }
 
@@ -349,6 +347,20 @@ public class OpenAICompletionEngine extends AbstractAICompletionEngine<GPTComple
         return createCompletionRequest(chatMode, messages, getMaxTokens());
     }
 
+    @NotNull
+    @Override
+    protected String getInstructions(boolean chatCompletion) {
+        if (GPTModel.GPT_TURBO.equals(getModel())) {
+            return """
+                You are SQL assistant. You must produce SQL code for given prompt.
+                You must produce valid SQL statement enclosed with Markdown code block and terminated with semicolon.
+                All comments MUST be placed before query outside markdown code block.
+                Be polite.
+                """;
+        }
+        return super.getInstructions(chatCompletion);
+    }
+
     protected Object createCompletionRequest(boolean chatMode, @NotNull List<DAICompletionMessage> messages, int maxTokens) {
         Double temperature =
             CommonUtils.toDouble(getSettings().getProperties().get(AIConstants.AI_TEMPERATURE), 0.0);
@@ -363,7 +375,7 @@ public class OpenAICompletionEngine extends AbstractAICompletionEngine<GPTComple
     @NotNull
     private GPTModel getModel() {
         final String modelId = CommonUtils.toString(getSettings().getProperties().get(AIConstants.GPT_MODEL), "");
-        return CommonUtils.isEmpty(modelId) ? GPTModel.GPT_TURBO16 : GPTModel.getByName(modelId);
+        return CommonUtils.isEmpty(modelId) ? GPTModel.GPT_TURBO : GPTModel.getByName(modelId);
     }
 
     private List<?> getCompletionChoices(GPTCompletionAdapter service, Object completionRequest) {

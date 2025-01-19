@@ -37,7 +37,6 @@ import org.jkiss.dbeaver.model.struct.rdb.DBSSchema;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerDescriptor;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerRegistry;
-import org.jkiss.dbeaver.runtime.encode.PasswordEncrypter;
 import org.jkiss.dbeaver.runtime.encode.SimpleStringEncrypter;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.xml.SAXListener;
@@ -54,20 +53,26 @@ import java.util.List;
 /**
  * Legacy datasource serialization (xml)
  */
-class DataSourceSerializerLegacy implements DataSourceSerializer
-{
+class DataSourceSerializerLegacy<T extends DataSourceDescriptor> implements DataSourceSerializer<T> {
     private static final Log log = Log.getLog(DataSourceSerializerLegacy.class);
 
-    private static PasswordEncrypter ENCRYPTOR = new SimpleStringEncrypter();
+    private final DataSourceRegistry<T> registry;
 
-    private final DataSourceRegistry registry;
+    private static final String LEGACY_DEFAULT_AUTO_COMMIT = "default.autocommit"; //$NON-NLS-1$
+    private static final String LEGACY_DEFAULT_ISOLATION = "default.isolation"; //$NON-NLS-1$
+    private static final String LEGACY_DEFAULT_ACTIVE_OBJECT = "default.activeObject"; //$NON-NLS-1$
 
-    DataSourceSerializerLegacy(DataSourceRegistry registry) {
+    DataSourceSerializerLegacy(DataSourceRegistry<T> registry) {
         this.registry = registry;
     }
 
     @Override
-    public void saveDataSources(DBRProgressMonitor monitor, DataSourceConfigurationManager configurationManager, DBPDataSourceConfigurationStorage configurationStorage, List<DataSourceDescriptor> localDataSources) throws DBException, IOException {
+    public void saveDataSources(
+        DBRProgressMonitor monitor,
+        DataSourceConfigurationManager configurationManager,
+        DBPDataSourceConfigurationStorage configurationStorage,
+        List<T> localDataSources
+    ) throws IOException {
         throw new IOException("Legacy serializer is deprecated, save not possible");
     }
 
@@ -76,12 +81,12 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
         @NotNull DBPDataSourceConfigurationStorage configurationStorage,
         @NotNull DataSourceConfigurationManager configurationManager,
         @NotNull DataSourceRegistry.ParseResults parseResults,
-        Collection<String> dataSourceIds, boolean refresh
-    ) throws DBException, IOException {
+        Collection<String> dataSourceIds
+    ) throws DBException {
         try (InputStream is = configurationManager.readConfiguration(configurationStorage.getStorageName(), dataSourceIds)) {
             if (is != null) {
                 SAXReader parser = new SAXReader(is);
-                final DataSourcesParser dsp = new DataSourcesParser(registry, configurationStorage, refresh, parseResults);
+                final DataSourcesParser dsp = new DataSourcesParser(registry, configurationStorage, parseResults);
                 parser.parse(dsp);
             }
         } catch (Exception ex) {
@@ -94,7 +99,7 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
     private static String decryptPassword(String encPassword) {
         if (!CommonUtils.isEmpty(encPassword)) {
             try {
-                encPassword = ENCRYPTOR.decrypt(encPassword);
+                encPassword = SimpleStringEncrypter.INSTANCE.decrypt(encPassword);
             } catch (Throwable e) {
                 // could not decrypt - use as is
                 encPassword = null;
@@ -103,23 +108,21 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
         return encPassword;
     }
 
-    private class DataSourcesParser implements SAXListener {
+    private static class DataSourcesParser implements SAXListener {
         DataSourceRegistry registry;
         DataSourceDescriptor curDataSource;
         DBPDataSourceConfigurationStorage storage;
-        boolean refresh;
         boolean isDescription = false;
         DBRShellCommand curCommand = null;
         private DBWHandlerConfiguration curNetworkHandler;
         private DBSObjectFilter curFilter;
         private StringBuilder curQuery;
-        private DataSourceRegistry.ParseResults parseResults;
+        private final DataSourceRegistry.ParseResults parseResults;
         private boolean passwordReadCanceled = false;
 
-        private DataSourcesParser(DataSourceRegistry registry, DBPDataSourceConfigurationStorage storage, boolean refresh, DataSourceRegistry.ParseResults parseResults) {
+        private DataSourcesParser(DataSourceRegistry registry, DBPDataSourceConfigurationStorage storage, DataSourceRegistry.ParseResults parseResults) {
             this.registry = registry;
             this.storage = storage;
-            this.refresh = refresh;
             this.parseResults = parseResults;
         }
 
@@ -327,15 +330,15 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
                     if (curDataSource != null) {
                         String propName = atts.getValue(RegistryConstants.ATTR_NAME);
                         String propValue = atts.getValue(RegistryConstants.ATTR_VALUE);
-                        // TODO: remove bootstrap preferences later. PResent for config backward compatibility
+                        // Backward compatibility
                         switch (propName) {
-                            case DataSourceRegistry.DEFAULT_AUTO_COMMIT:
+                            case LEGACY_DEFAULT_AUTO_COMMIT:
                                 curDataSource.getConnectionConfiguration().getBootstrap().setDefaultAutoCommit(CommonUtils.toBoolean(propValue));
                                 break;
-                            case DataSourceRegistry.DEFAULT_ISOLATION:
+                            case LEGACY_DEFAULT_ISOLATION:
                                 curDataSource.getConnectionConfiguration().getBootstrap().setDefaultTransactionIsolation(CommonUtils.toInt(propValue));
                                 break;
-                            case DataSourceRegistry.DEFAULT_ACTIVE_OBJECT:
+                            case LEGACY_DEFAULT_ACTIVE_OBJECT:
                                 if (!CommonUtils.isEmpty(propValue)) {
                                     curDataSource.getConnectionConfiguration().getBootstrap().setDefaultCatalogName(propValue);
                                 }
@@ -435,7 +438,7 @@ class DataSourceSerializerLegacy implements DataSourceSerializer
                     curFilter = null;
                     break;
                 case RegistryConstants.TAG_QUERY:
-                    if (curDataSource != null && curQuery != null && curQuery.length() > 0) {
+                    if (curDataSource != null && curQuery != null && !curQuery.isEmpty()) {
                         curDataSource.getConnectionConfiguration().getBootstrap().getInitQueries().add(curQuery.toString());
                         curQuery = null;
                     }

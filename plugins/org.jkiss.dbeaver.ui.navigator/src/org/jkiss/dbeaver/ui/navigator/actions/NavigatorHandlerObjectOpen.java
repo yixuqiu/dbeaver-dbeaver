@@ -50,7 +50,6 @@ import org.jkiss.dbeaver.ui.editors.*;
 import org.jkiss.dbeaver.ui.editors.entity.EntityEditor;
 import org.jkiss.dbeaver.ui.editors.entity.EntityEditorDescriptor;
 import org.jkiss.dbeaver.ui.editors.entity.FolderEditor;
-import org.jkiss.dbeaver.ui.editors.object.ObjectEditorInput;
 import org.jkiss.dbeaver.ui.internal.UINavigatorMessages;
 import org.jkiss.dbeaver.ui.navigator.NavigatorPreferences;
 import org.jkiss.dbeaver.ui.navigator.NavigatorUtils;
@@ -343,14 +342,14 @@ public class NavigatorHandlerObjectOpen extends NavigatorHandlerObjectBase imple
                         //actionName = objectManager == null || !objectManager.canEditObject(object) ? UINavigatorMessages.actions_navigator_view : UINavigatorMessages.actions_navigator_edit;
                         actionName = UINavigatorMessages.actions_navigator_view;
                     }
-                } else if (node instanceof DBNNodeWithResource) {
+                } else if (node.getAdapter(IResource.class) != null) {
                     actionName = UINavigatorMessages.actions_navigator_error_dialog_open_resource_title;
                 }
                 String label;
                 if (selection instanceof IStructuredSelection && ((IStructuredSelection) selection).size() > 1) {
                     label = NLS.bind(actionName, UINavigatorMessages.actions_navigator__objects);
                 } else {
-                    if (node instanceof DBNNodeWithResource) {
+                    if (node.getAdapter(IResource.class) != null) {
                         label = actionName + " '" + node.getNodeDisplayName() + "'"; //$NON-NLS-1$
                     } else {
                         label = NLS.bind(actionName, node.getNodeTypeLabel()); //$NON-NLS-1$

@@ -39,7 +39,7 @@ import java.util.Properties;
 import java.util.concurrent.Executor;
 
 /**
- * Managable connection
+ * Manageable connection
  */
 public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, DBRBlockingObject {
 
@@ -47,6 +47,7 @@ public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, 
 
     @NotNull
     final JDBCExecutionContext context;
+    private volatile Thread blockThread;
 
     public JDBCConnectionImpl(@NotNull JDBCExecutionContext context, @NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionPurpose purpose, @NotNull String taskTitle)
     {
@@ -57,7 +58,11 @@ public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, 
     @Override
     public Connection getOriginal() throws SQLException
     {
-        return context.getConnection(getProgressMonitor());
+        return context.getConnection(getProgressMonitor(), true);
+    }
+
+    private Connection getOriginalOrNull() throws SQLException {
+        return context.getConnection(getProgressMonitor(), false);
     }
 
     @NotNull
@@ -322,7 +327,7 @@ public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, 
         if (purpose.isUser()) {
             // Check for warnings
             try {
-                final Connection connection = getOriginal();
+                final Connection connection = getOriginalOrNull();
                 if (connection != null) {
                     JDBCUtils.reportWarnings(this, connection.getWarnings());
                     connection.clearWarnings();
@@ -702,21 +707,21 @@ public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, 
     }
 
     @Override
-    public void cancelBlock(@NotNull DBRProgressMonitor monitor, @Nullable Thread blockThread)
-        throws DBException
-    {
-        if (context.isConnected()) {
-            try {
-                // Sync execution context because async access during disconnect may cause troubles
-                synchronized (getExecutionContext()) {
-                    if (!getDataSource().closeConnection(getOriginal(), "Close database connection", false)) {
-                        throw new DBCException("Couldn't close JDBC connection: timeout");
-                    }
-                }
-            } catch (SQLException e) {
-                throw new DBCException(e, getExecutionContext());
-            }
+    public void cancelBlock(@NotNull DBRProgressMonitor monitor, @Nullable Thread blockThread) throws DBException {
+        // Let's try with driver implementation
+        Connection connection = context.getConnectionOrNull();
+        if (connection != null) {
+            getDataSource().cancelCurrentExecution(connection, blockThread);
         }
+    }
+
+    @Override
+    public Thread getBlockThread() {
+        return blockThread;
+    }
+
+    public void setBlockThread(Thread blockThread) {
+        this.blockThread = blockThread;
     }
 
     protected JDBCStatement createStatementImpl(Statement original)

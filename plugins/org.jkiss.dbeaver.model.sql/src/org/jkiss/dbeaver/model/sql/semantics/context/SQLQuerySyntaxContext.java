@@ -20,9 +20,10 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
-import org.jkiss.dbeaver.model.sql.semantics.model.SQLQueryRowsSourceModel;
-import org.jkiss.dbeaver.model.stm.STMTreeNode;
+import org.jkiss.dbeaver.model.sql.semantics.model.select.SQLQueryRowsSourceModel;
 import org.jkiss.dbeaver.model.struct.DBSEntity;
+import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.DBSObjectType;
 
 import java.util.List;
 
@@ -42,6 +43,18 @@ public abstract class SQLQuerySyntaxContext extends SQLQueryDataContext {
         return this.parent.getColumnsList();
     }
 
+    @Override
+    public boolean hasUnresolvedSource() {
+        return this.parent.hasUnresolvedSource();
+    }
+
+
+    @NotNull
+    @Override
+    public List<SQLQueryResultPseudoColumn> getPseudoColumnsList() {
+        return this.parent.getPseudoColumnsList();
+    }
+
     @Nullable
     @Override
     public DBSEntity findRealTable(@NotNull DBRProgressMonitor monitor, @NotNull List<String> tableName) {
@@ -56,8 +69,30 @@ public abstract class SQLQuerySyntaxContext extends SQLQueryDataContext {
 
     @Nullable
     @Override
+    public DBSObject findRealObject(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBSObjectType objectType,
+        @NotNull List<String> objectName
+    ) {
+        return this.parent.findRealObject(monitor, objectType, objectName);
+    }
+
+    @Nullable
+    @Override
     public SQLQueryResultColumn resolveColumn(@NotNull DBRProgressMonitor monitor, @NotNull String columnName) {
         return this.parent.resolveColumn(monitor, columnName);
+    }
+
+    @Override
+    @Nullable
+    public SQLQueryResultPseudoColumn resolvePseudoColumn(DBRProgressMonitor monitor, @NotNull String name) {
+        return this.parent.resolvePseudoColumn(monitor, name);
+    }
+
+    @Nullable
+    @Override
+    public SQLQueryResultPseudoColumn resolveGlobalPseudoColumn(@NotNull DBRProgressMonitor monitor, @NotNull String name) {
+        return this.parent.resolveGlobalPseudoColumn(monitor, name);
     }
 
     @Nullable
@@ -73,15 +108,14 @@ public abstract class SQLQuerySyntaxContext extends SQLQueryDataContext {
         return this.parent.getDialect();
     }
     
-    @NotNull
-    @Override
-    public SQLQueryRowsSourceModel getDefaultTable(@NotNull STMTreeNode syntaxNode) {
-        return this.parent.getDefaultTable(syntaxNode);
-    }
-    
     @Override
     protected void collectKnownSourcesImpl(@NotNull KnownSourcesInfo result) {
         this.parent.collectKnownSourcesImpl(result);
+    }
+
+    @Override
+    protected final List<SQLQueryResultPseudoColumn> prepareRowsetPseudoColumns(@NotNull SQLQueryRowsSourceModel source) {
+        return this.parent.prepareRowsetPseudoColumns(source);
     }
 }
 

@@ -141,6 +141,11 @@ public abstract class DBDAttributeBinding implements DBSObject, DBSAttributeBase
 
     public abstract String getRowIdentifierStatus();
 
+    public boolean isInRowIdentifier() {
+        DBDRowIdentifier rowIdentifier = getRowIdentifier();
+        return rowIdentifier != null && rowIdentifier.hasAttribute(this);
+    }
+
     @Nullable
     public abstract List<DBSEntityReferrer> getReferrers();
 
@@ -234,8 +239,9 @@ public abstract class DBDAttributeBinding implements DBSObject, DBSAttributeBase
      */
     @NotNull
     public String getFullyQualifiedName(DBPEvaluationContext context, @NotNull DBPAttributeReferencePurpose purpose) {
-        if (this.getEntityAttribute() instanceof DBSContextBoundAttribute) {
-            return DBUtils.getQuotedIdentifier(this.getEntityAttribute(), purpose);
+        if (this.getEntityAttribute() instanceof DBSContextBoundAttribute cba && purpose != DBPAttributeReferencePurpose.UNSPECIFIED) {
+            // FIXME: we shouldn't use formatMemberReference here
+            return cba.formatMemberReference(false, null, purpose);
         }
         final DBPDataSource dataSource = getDataSource();
         if (getParentObject() == null) {

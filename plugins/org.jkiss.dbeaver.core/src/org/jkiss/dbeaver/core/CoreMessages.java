@@ -17,7 +17,7 @@
  */
 package org.jkiss.dbeaver.core;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class CoreMessages extends NLS {
     public static final String BUNDLE_NAME = "org.jkiss.dbeaver.core.CoreResources"; //$NON-NLS-1$
@@ -267,7 +267,6 @@ public class CoreMessages extends NLS {
     public static String model_html_read_database_meta_data;
 
     public static String model_navigator_Description;
-    public static String model_navigator_Name;
     public static String model_navigator_load_;
     public static String model_navigator_load_items_;
     public static String model_navigator_Model_root;
@@ -296,6 +295,9 @@ public class CoreMessages extends NLS {
 
     public static String pref_page_database_general_separate_meta_connection;
     public static String pref_page_database_general_checkbox_case_sensitive_names;
+    public static String pref_page_database_general_group_performance;
+    public static String pref_page_database_general_checkbox_disable_extra_metadata;
+    public static String pref_page_database_general_checkbox_disable_extra_metadata_tip;
     public static String pref_page_database_general_checkbox_rollback_on_error;
     public static String pref_page_database_general_checkbox_show_row_count;
     public static String pref_page_database_general_group_metadata;
@@ -360,6 +362,8 @@ public class CoreMessages extends NLS {
     public static String pref_page_ui_general_refresh_editor_on_open_tip;
     public static String pref_page_ui_general_keep_database_editors_on_disconnect;
     public static String pref_page_ui_general_keep_database_editors_on_disconnect_tip;
+    public static String pref_page_ui_general_disconnect_on_editors_close;
+    public static String pref_page_ui_general_disconnect_on_editors_close_tip;
     public static String pref_page_ui_general_group_general;
     public static String pref_page_ui_general_group_regional;
     public static String pref_page_ui_general_group_language;
@@ -518,6 +522,16 @@ public class CoreMessages extends NLS {
     public static String pref_page_connection_label_default_connection_template_variables;
     public static String pref_page_connection_label_default_connection_template_variables_tip;
 
+    public static String pref_page_connection_label_close_connection_on_sleep;
+    public static String pref_page_connection_label_close_connection_on_sleep_tip;
+
+    public static String pref_page_network_expert_label;
+    public static String pref_page_network_expert_preferred_ip_stack_label;
+    public static String pref_page_network_expert_preferred_ip_stack_tip;
+    public static String pref_page_network_expert_preferred_ip_addresses_label;
+    public static String pref_page_network_expert_preferred_ip_addresses_tip;
+    public static String pref_page_network_expert_restart_prompt_title;
+    public static String pref_page_network_expert_restart_prompt_message;
 
     public static String pref_page_connection_label_default_settings;
 

@@ -16,10 +16,7 @@
  */
 package org.jkiss.dbeaver.ui.editors.json;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
+import com.google.gson.*;
 import org.eclipse.jface.text.formatter.ContextBasedFormattingStrategy;
 import org.eclipse.jface.text.source.ISourceViewer;
 import org.jkiss.utils.CommonUtils;
@@ -30,6 +27,19 @@ import org.jkiss.utils.CommonUtils;
 public class JSONFormattingStrategy extends ContextBasedFormattingStrategy {
     private ISourceViewer sourceViewer;
     private JSONSourceViewerConfiguration svConfig;
+
+    public static Gson GSON_FORMATTED = new GsonBuilder()
+            .serializeNulls()
+            .disableHtmlEscaping()
+            .setPrettyPrinting()
+            .setStrictness(Strictness.LENIENT)
+            .create();
+
+    public static Gson GSON_UNFORMATTED = new GsonBuilder()
+        .serializeNulls()
+        .disableHtmlEscaping()
+        .setStrictness(Strictness.LENIENT)
+        .create();
 
     JSONFormattingStrategy(ISourceViewer sourceViewer, JSONSourceViewerConfiguration svConfig) {
         this.sourceViewer = sourceViewer;
@@ -47,13 +57,7 @@ public class JSONFormattingStrategy extends ContextBasedFormattingStrategy {
         }
         JsonElement jsonElement = JsonParser.parseString(content);
 
-        Gson gson = new GsonBuilder()
-            .serializeNulls()
-            .disableHtmlEscaping()
-            .setPrettyPrinting()
-            .setLenient()
-            .create();
-        return gson.toJson(jsonElement);
+        return GSON_FORMATTED.toJson(jsonElement);
     }
 
     @Override

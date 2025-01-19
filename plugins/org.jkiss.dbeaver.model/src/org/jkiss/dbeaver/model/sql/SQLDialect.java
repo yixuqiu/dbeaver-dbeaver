@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.model.sql;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBPDataKind;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPIdentifierCase;
@@ -25,7 +26,6 @@ import org.jkiss.dbeaver.model.DBPKeywordType;
 import org.jkiss.dbeaver.model.data.DBDBinaryFormatter;
 import org.jkiss.dbeaver.model.data.DBDDataFilter;
 import org.jkiss.dbeaver.model.exec.DBCLogicalOperator;
-import org.jkiss.dbeaver.model.impl.sql.SQLDialectQueryGenerator;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.parser.SQLTokenPredicateSet;
 import org.jkiss.dbeaver.model.struct.DBSAttributeBase;
@@ -62,11 +62,15 @@ public interface SQLDialect {
         WHERE,
         HAVING,
         GROUP_BY,
-        ORDER_BY;
+        ORDER_BY
+    }
+
+    record GlobalVariableInfo(String name, String description, DBPDataKind type) {
+        public static GlobalVariableInfo[] EMPTY_ARRAY = new GlobalVariableInfo[0];
     }
 
     @NotNull
-    SQLDialectQueryGenerator getQueryGenerator();
+    SQLQueryGenerator getQueryGenerator();
 
     @NotNull
     String getDialectId();
@@ -103,14 +107,12 @@ public interface SQLDialect {
 
     /**
      * Retrieves a list of execute keywords. If database doesn't support implicit execute returns empty list or null.
-     * @return the list of execute keywords.
      */
     @NotNull
     String[] getExecuteKeywords();
 
     /**
      * Retrieves a list of execute keywords. If database doesn't support implicit execute returns empty list or null.
-     * @return the list of execute keywords.
      */
     @NotNull
     String[] getDDLKeywords();
@@ -274,6 +276,7 @@ public interface SQLDialect {
 
     boolean supportsAliasInUpdate();
 
+    boolean supportsAsKeywordBeforeAliasInFromClause();
     /**
      * Column name to list all table columns. Usually asterisk (*).
      */
@@ -330,7 +333,6 @@ public interface SQLDialect {
     /**
      * Enables to call particular cast operator or function for special attribute name.
      * @param attribute   attribute data to help decide whether cast and how to cast
-     * @param attributeName
      * @return            casted attribute name
      */
     String getCastedAttributeName(@NotNull DBSAttributeBase attribute, String attributeName);
@@ -399,7 +401,13 @@ public interface SQLDialect {
     @NotNull
     MultiValueInsertMode getDefaultMultiValueInsertMode();
 
-    String addFiltersToQuery(DBRProgressMonitor monitor, DBPDataSource dataSource, String query, DBDDataFilter filter);
+    @NotNull
+    String addFiltersToQuery(
+        @Nullable DBRProgressMonitor monitor,
+        @NotNull DBPDataSource dataSource,
+        @NotNull String query,
+        @NotNull DBDDataFilter filter
+    ) throws DBException;
 
     /**
      * Two-item array containing begin and end of multi-line comments.
@@ -459,6 +467,11 @@ public interface SQLDialect {
     boolean isStripCommentsBeforeBlocks();
 
     /**
+     * Returns true if need to escape backslash character
+     */
+    boolean isEscapeBackslash();
+
+    /**
      * Returns true if query is definitely transactional. Otherwise returns false, however it still may be transactional.
      * You need to check query results to ensure that it is not transactional.
      */
@@ -508,11 +521,6 @@ public interface SQLDialect {
      */
     @NotNull
     SQLTokenPredicateSet getSkipTokenPredicates();
-    
-    /**
-     * @return a set of SQLBlockCompletions with information about blocks for autoedit
-     */
-    SQLBlockCompletions getBlockCompletions();
 
     default EnumSet<ProjectionAliasVisibilityScope> getProjectionAliasVisibilityScope() {
         return EnumSet.of(
@@ -525,4 +533,9 @@ public interface SQLDialect {
 
     default void afterDataSourceInitialization(@NotNull DBPDataSource dataSource) {
     }
+
+    default boolean useEmptyStringForNulls() {
+        return false;
+    }
+
 }

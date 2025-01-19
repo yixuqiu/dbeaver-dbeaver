@@ -67,8 +67,13 @@ public class SQLServerUniqueKeyManager extends SQLConstraintManager<SQLServerTab
     }
 
     @Override
-    public boolean canCreateObject(Object container) {
+    public boolean canCreateObject(@NotNull Object container) {
         return container instanceof SQLServerTable;
+    }
+
+    @Override
+    protected boolean isPrimaryKeyOrdered() {
+        return true;
     }
 
 }
