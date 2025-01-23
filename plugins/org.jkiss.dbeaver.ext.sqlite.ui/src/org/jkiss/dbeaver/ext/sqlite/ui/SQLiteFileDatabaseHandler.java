@@ -40,6 +40,11 @@ public class SQLiteFileDatabaseHandler extends AbstractFileDatabaseHandler {
     }
 
     @Override
+    protected String createConnectionName(List<Path> fileList) {
+        return createDatabaseName(fileList);
+    }
+
+    @Override
     protected DriverReference getDriverReference() {
         return SQLiteUtils.DRIVER_REFERENCE;
     }

@@ -23,6 +23,7 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
@@ -73,24 +74,34 @@ public abstract class AbstractFileDatabaseHandler implements IFileTypeHandler {
 
         if (isSingleDatabaseConnection()) {
             String databaseName = createDatabaseName(fileList);
-            createDatabaseConnection(databaseName, project, driver);
+            String connectionName = createConnectionName(fileList);
+            createDatabaseConnection(connectionName, databaseName, project, driver);
         } else {
             for (Path dbFile : fileList) {
                 String databaseName = createDatabaseName(Collections.singletonList(dbFile));
-                createDatabaseConnection(databaseName, project, driver);
+                String connectionName = createConnectionName(Collections.singletonList(dbFile));
+                createDatabaseConnection(connectionName, databaseName, project, driver);
             }
         }
     }
 
-    private void createDatabaseConnection(@NotNull String databaseName, DBPProject project, DBPDriver driver) {
+    private void createDatabaseConnection(String connectionName, @NotNull String databaseName, DBPProject project, DBPDriver driver) {
         DBPConnectionConfiguration configuration = new DBPConnectionConfiguration();
         configuration.setDatabaseName(databaseName);
-        DBPDataSourceContainer dsContainer = project.getDataSourceRegistry().createDataSource(driver, configuration);
-        dsContainer.setName("File: " + CommonUtils.truncateString(databaseName, 32));
+        DBPDataSourceRegistry registry = project.getDataSourceRegistry();
+        DBPDataSourceContainer dsContainer = registry.createDataSource(driver, configuration);
+        int conNameSuffix = 1;
+        connectionName = "File - " + CommonUtils.truncateString(connectionName, 64);
+        String finalConnectionName = connectionName;
+        while (registry.findDataSourceByName(finalConnectionName) != null) {
+            conNameSuffix++;
+            finalConnectionName = connectionName + " " + conNameSuffix;
+        }
+        dsContainer.setName(connectionName);
         dsContainer.setTemporary(true);
 
         try {
-            project.getDataSourceRegistry().addDataSource(dsContainer);
+            registry.addDataSource(dsContainer);
         } catch (DBException e) {
             log.error(e);
             return;
@@ -170,6 +181,8 @@ public abstract class AbstractFileDatabaseHandler implements IFileTypeHandler {
     protected abstract String getDatabaseTerm();
 
     protected abstract String createDatabaseName(@NotNull List<Path> fileList);
+
+    protected abstract String createConnectionName(List<Path> fileList);
 
     protected abstract DriverReference getDriverReference();
 
