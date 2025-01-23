@@ -97,7 +97,7 @@ public abstract class AbstractFileDatabaseHandler implements IFileTypeHandler {
             conNameSuffix++;
             finalConnectionName = connectionName + " " + conNameSuffix;
         }
-        dsContainer.setName(connectionName);
+        dsContainer.setName(finalConnectionName);
         dsContainer.setTemporary(true);
 
         try {
