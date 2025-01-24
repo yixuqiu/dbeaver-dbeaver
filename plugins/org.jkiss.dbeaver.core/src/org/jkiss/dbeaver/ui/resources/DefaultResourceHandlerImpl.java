@@ -34,6 +34,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.fs.DBFFileStoreProvider;
 import org.jkiss.dbeaver.model.fs.DBFUtils;
+import org.jkiss.dbeaver.model.fs.nio.EFSNIOResource;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.ProgramInfo;
 import org.jkiss.dbeaver.ui.UIUtils;
@@ -88,7 +89,7 @@ public class DefaultResourceHandlerImpl extends AbstractResourceHandler {
 
     @Override
     public void openResource(@NotNull IResource resource) throws CoreException, DBException {
-        IPath location = resource.getLocation();
+        IPath location = resource instanceof EFSNIOResource ? null : resource.getLocation();
         if (location != null) {
             // Try to open using file handler
             Path path = location.toPath();
