@@ -16,8 +16,10 @@
  */
 package org.jkiss.dbeaver.model.struct;
 
+import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.DBPObject;
+import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 
 /**
  * Extends DBPObject with the ability to provide extra data type description, not covered by the database model
@@ -25,8 +27,8 @@ import org.jkiss.dbeaver.model.DBPObject;
 public interface DBSTypedObjectEx2 extends DBPObject {
 
     /**
-     * Returs type description
+     * Returns type description
      */
     @Nullable
-    DBSTypeDescriptor getTypeDescriptor();
+    DBSTypeDescriptor getTypeDescriptor(@NotNull DBRProgressMonitor monitor);
 }

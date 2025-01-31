@@ -69,6 +69,10 @@ public class DBDRowIdentifier implements DBPObject {
         return entityIdentifier.getConstraintType().getName();
     }
 
+    public boolean isIncomplete() {
+        return attributes.isEmpty();
+    }
+
     @NotNull
     public List<DBDAttributeBinding> getAttributes() {
         return attributes;
@@ -79,6 +83,10 @@ public class DBDRowIdentifier implements DBPObject {
             return false;
         }
         return true;
+    }
+
+    public boolean hasAttribute(DBDAttributeBinding attributeBinding) {
+        return attributes.contains(attributeBinding);
     }
 
     public void reloadAttributes(@NotNull DBRProgressMonitor monitor, @NotNull DBDAttributeBinding[] bindings) throws DBException
@@ -112,4 +120,5 @@ public class DBDRowIdentifier implements DBPObject {
         return entity.getName() + "." + entityIdentifier.getName() + "(" +
             attributes.stream().map(DBDAttributeBinding::getName).collect(Collectors.joining(",")) + ")";
     }
+
 }

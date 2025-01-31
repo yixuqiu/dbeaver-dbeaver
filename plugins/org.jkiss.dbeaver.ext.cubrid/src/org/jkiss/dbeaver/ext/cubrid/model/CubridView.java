@@ -31,12 +31,12 @@ import org.jkiss.dbeaver.model.meta.Property;
 
 public class CubridView extends GenericView
 {
+    private CubridUser owner;
     public CubridView(
-            GenericStructContainer container,
-            String tableName,
-            String tableType,
-            JDBCResultSet dbResult)
-    {
+            @NotNull GenericStructContainer container,
+            @Nullable String tableName,
+            @Nullable String tableType,
+            @Nullable JDBCResultSet dbResult) {
         super(container, tableName, tableType, dbResult);
         if (dbResult != null) {
             String type = JDBCUtils.safeGetString(dbResult, CubridConstants.IS_SYSTEM_CLASS);
@@ -44,35 +44,45 @@ public class CubridView extends GenericView
                 this.setSystem(type.equals("YES"));
             }
         }
+        this.owner = (CubridUser) container;
     }
 
+    @NotNull
+    @Property(viewable = true, editable = true, order =1)
     @Override
-    public CubridDataSource getDataSource()
-    {
+    public String getName() {
+        return super.getName().toLowerCase();
+    }
+
+    public void setSchema(@NotNull CubridUser owner) {
+        this.owner = owner;
+    }
+
+    @NotNull
+    @Override
+    public CubridDataSource getDataSource() {
         return (CubridDataSource) super.getDataSource();
     }
 
-    public String getUniqueName()
-    {
+    @NotNull
+    public String getUniqueName() {
         if (getDataSource().getSupportMultiSchema()) {
-            return this.getSchema().getName() + "." + this.getName();
+            return this.getContainer() + "." + this.getName();
         } else {
             return this.getName();
         }
     }
 
-    @Nullable
+    @NotNull
     @Override
-    @Property(viewable = true, editable = true, updatable = true, listProvider = OwnerListProvider.class, order = 2)
-    public GenericSchema getSchema()
-    {
-        return super.getSchema();
+    @Property(viewable = true, editable = true, updatable = true, listProvider = OwnerListProvider.class, labelProvider = GenericSchema.SchemaNameTermProvider.class, order = 2)
+    public GenericSchema getSchema() {
+        return owner;
     }
 
     @NotNull
     @Override
-    public String getFullyQualifiedName(DBPEvaluationContext context)
-    {
+    public String getFullyQualifiedName(@NotNull DBPEvaluationContext context) {
         if (this.isSystem()) {
             return DBUtils.getFullQualifiedName(getDataSource(), this);
         } else {
@@ -82,16 +92,15 @@ public class CubridView extends GenericView
 
     public static class OwnerListProvider implements IPropertyValueListProvider<CubridView>
     {
-
+        @NotNull
         @Override
-        public boolean allowCustomValue()
-        {
+        public boolean allowCustomValue() {
             return false;
         }
 
+        @NotNull
         @Override
-        public Object[] getPossibleValues(CubridView object)
-        {
+        public Object[] getPossibleValues(@NotNull CubridView object) {
             return object.getDataSource().getSchemas().toArray();
         }
     }

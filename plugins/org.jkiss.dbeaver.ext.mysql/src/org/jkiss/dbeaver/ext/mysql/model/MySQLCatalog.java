@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.mysql.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.ext.mysql.MySQLConstants;
@@ -281,7 +282,7 @@ public class MySQLCatalog implements
                     }
                 }
             } catch (SQLException e) {
-                throw new DBException(e, getDataSource());
+                throw new DBDatabaseException(e, getDataSource());
             }
         }
         return databaseSize;
@@ -374,13 +375,13 @@ public class MySQLCatalog implements
     public Collection<MySQLPackage> getPackages(DBRProgressMonitor monitor)
         throws DBException
     {
-        return packageCache.getAllObjects(monitor, this);
+        return monitor == null ? packageCache.getCachedObjects() : packageCache.getAllObjects(monitor, this);
     }
 
     @Association
     public Collection<MySQLTrigger> getTriggers(DBRProgressMonitor monitor) throws DBException {
         return getDataSource().supportsInformationSchema() ?
-                triggerCache.getAllObjects(monitor, this) :
+            (monitor == null ? triggerCache.getCachedObjects() : triggerCache.getAllObjects(monitor, this)) :
                 Collections.emptyList();
     }
 
@@ -393,14 +394,14 @@ public class MySQLCatalog implements
     @Association
     public Collection<MySQLEvent> getEvents(DBRProgressMonitor monitor) throws DBException {
         return getDataSource().supportsInformationSchema() ?
-                eventCache.getAllObjects(monitor, this) :
+            (monitor == null ? eventCache.getCachedObjects() : eventCache.getAllObjects(monitor, this)) :
                 Collections.emptyList();
     }
 
     @Association
     public Collection<MySQLSequence> getSequences(DBRProgressMonitor monitor) throws DBException {
         return getDataSource().supportsInformationSchema() ?
-                sequenceCache.getAllObjects(monitor, this) :
+            (monitor == null ? sequenceCache.getCachedObjects() : sequenceCache.getAllObjects(monitor, this)) :
                 Collections.emptyList();
     }
 
@@ -408,7 +409,7 @@ public class MySQLCatalog implements
     public Collection<MySQLTableBase> getChildren(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
-        return getTableCache().getAllObjects(monitor, this);
+        return tableCache.getAllObjects(monitor, this);
     }
 
     @Override
@@ -561,13 +562,13 @@ public class MySQLCatalog implements
             if (!session.getDataSource().getContainer().getPreferenceStore().getBoolean(ModelPreferences.META_USE_SERVER_SIDE_FILTERS)) {
                 // Client side filter
                 if (object != null || objectName != null) {
-                    appendTableNameCondition(session, object, objectName, sql);
+                    appendTableNameCondition(session, object, objectName, sql, true);
                 }
             } else {
                 String tableNameCol = DBUtils.getQuotedIdentifier(dataSource, "Tables_in_" + owner.getName());
                 if (object != null || objectName != null) {
                     sql.append(" WHERE ").append(tableNameCol);
-                    appendTableNameCondition(session, object, objectName, sql);
+                    appendTableNameCondition(session, object, objectName, sql, false);
                     if (dataSource.supportsSequences()) {
                         sql.append(" AND Table_type <> 'SEQUENCE'");
                     }
@@ -607,8 +608,8 @@ public class MySQLCatalog implements
             return session.prepareStatement(sql.toString());
         }
 
-        private static void appendTableNameCondition(@NotNull JDBCSession session, @Nullable MySQLTableBase object, @Nullable String objectName, StringBuilder sql) {
-            if (objectName != null && SQLUtils.isLikePattern(objectName)) {
+        private static void appendTableNameCondition(@NotNull JDBCSession session, @Nullable MySQLTableBase object, @Nullable String objectName, StringBuilder sql, boolean forceUseLike) {
+            if (forceUseLike || objectName != null && SQLUtils.isLikePattern(objectName)) {
                 sql.append(" LIKE ");
             } else {
                 sql.append(" = ");
@@ -983,7 +984,7 @@ public class MySQLCatalog implements
 
         @NotNull
         @Override
-        public JDBCStatement prepareLookupStatement(JDBCSession session, MySQLCatalog owner, MySQLPackage object, String objectName) throws SQLException {
+        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull MySQLCatalog owner, @Nullable MySQLPackage object, @Nullable String objectName) throws SQLException {
             JDBCPreparedStatement dbStat = session.prepareStatement(
                 "SELECT name,comment FROM mysql.proc\n" +
                     "WHERE db = ? AND type = 'PACKAGE'" +
@@ -1010,7 +1011,7 @@ public class MySQLCatalog implements
 
         @NotNull
         @Override
-        public JDBCStatement prepareLookupStatement(JDBCSession session, MySQLCatalog owner, MySQLTrigger object, String objectName) throws SQLException {
+        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull MySQLCatalog owner, @Nullable MySQLTrigger object, @Nullable String objectName) throws SQLException {
             JDBCPreparedStatement dbStat = session.prepareStatement(
                 "SELECT * FROM INFORMATION_SCHEMA.TRIGGERS\n" +
                     "WHERE TRIGGER_SCHEMA = ?" +

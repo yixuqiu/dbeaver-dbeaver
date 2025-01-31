@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.mysql.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
@@ -26,6 +27,7 @@ import org.jkiss.dbeaver.ext.mysql.MySQLDataSourceProvider;
 import org.jkiss.dbeaver.ext.mysql.model.plan.MySQLPlanAnalyser;
 import org.jkiss.dbeaver.ext.mysql.model.session.MySQLSessionManager;
 import org.jkiss.dbeaver.model.*;
+import org.jkiss.dbeaver.model.access.DBAuthUtils;
 import org.jkiss.dbeaver.model.admin.sessions.DBAServerSessionManager;
 import org.jkiss.dbeaver.model.app.DBACertificateStorage;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
@@ -42,6 +44,7 @@ import org.jkiss.dbeaver.model.impl.jdbc.*;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCBasicDataTypeCache;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectCache;
 import org.jkiss.dbeaver.model.impl.jdbc.struct.JDBCDataType;
+import org.jkiss.dbeaver.model.impl.net.SSLConstants;
 import org.jkiss.dbeaver.model.impl.net.SSLHandlerTrustStoreImpl;
 import org.jkiss.dbeaver.model.impl.sql.QueryTransformerLimit;
 import org.jkiss.dbeaver.model.meta.Association;
@@ -50,6 +53,7 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLHelpProvider;
 import org.jkiss.dbeaver.model.sql.SQLState;
+import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.struct.DBSDataType;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectFilter;
@@ -61,10 +65,7 @@ import org.osgi.framework.Version;
 
 import java.net.MalformedURLException;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.Driver;
-import java.sql.SQLException;
-import java.sql.Types;
+import java.sql.*;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -143,8 +144,13 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
     }
 
     @Override
-    protected Map<String, String> getInternalConnectionProperties(DBRProgressMonitor monitor, DBPDriver driver, JDBCExecutionContext context, String purpose, DBPConnectionConfiguration connectionInfo)
-        throws DBCException {
+    protected Map<String, String> getInternalConnectionProperties(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBPDriver driver,
+        @NotNull JDBCExecutionContext context,
+        @NotNull String purpose,
+        @NotNull DBPConnectionConfiguration connectionInfo
+    ) throws DBCException {
         Map<String, String> props = new LinkedHashMap<>(MySQLDataSourceProvider.getConnectionsProps());
         final DBWHandlerConfiguration sslConfig = getContainer().getActualConnectionConfiguration().getHandler(MySQLConstants.HANDLER_SSL);
         if (sslConfig != null && sslConfig.isEnabled()) {
@@ -211,12 +217,12 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
             byte[] clientCertData = SSLHandlerTrustStoreImpl.readCertificate(sslConfig, SSLHandlerTrustStoreImpl.PROP_SSL_CLIENT_CERT, MySQLConstants.PROP_SSL_CLIENT_CERT);
             byte[] keyData = SSLHandlerTrustStoreImpl.readCertificate(sslConfig, SSLHandlerTrustStoreImpl.PROP_SSL_CLIENT_KEY, MySQLConstants.PROP_SSL_CLIENT_KEY);
             if (caCertData != null || clientCertData != null) {
-                securityManager.addCertificate(getContainer(), "ssl", caCertData, clientCertData, keyData);
+                securityManager.addCertificate(getContainer(), SSLConstants.SSL_CERT_TYPE, caCertData, clientCertData, keyData);
             } else {
-                securityManager.deleteCertificate(getContainer(), "ssl");
+                securityManager.deleteCertificate(getContainer(), SSLConstants.SSL_CERT_TYPE);
             }
-            final String ksPath = makeKeyStorePath(securityManager.getKeyStorePath(getContainer(), "ssl"));
-            final char[] ksPass = securityManager.getKeyStorePassword(getContainer(), "ssl");
+            final String ksPath = makeKeyStorePath(securityManager.getKeyStorePath(getContainer(), SSLConstants.SSL_CERT_TYPE));
+            final char[] ksPass = securityManager.getKeyStorePassword(getContainer(), SSLConstants.SSL_CERT_TYPE);
             if (isMariaDB()) {
                 props.put("trustStore", ksPath);
                 props.put("trustStorePassword", String.valueOf(ksPass));
@@ -303,6 +309,19 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
                     0,
                     0,
                     0));
+        }
+        if ((isMariaDB() && isServerVersionAtLeast(5, 4))
+            || (!isMariaDB() && isServerVersionAtLeast(5, 7))
+            && dataTypeCache.getCachedObject(MySQLConstants.TYPE_GEOMETRY) == null) {
+            addGISDatatype(MySQLConstants.TYPE_GEOMETRY);
+            addGISDatatype(MySQLConstants.TYPE_POINT);
+            addGISDatatype(MySQLConstants.TYPE_LINESTRING);
+            addGISDatatype(MySQLConstants.TYPE_POLYGON);
+            addGISDatatype(MySQLConstants.TYPE_MULTIPOINT);
+            addGISDatatype(MySQLConstants.TYPE_MULTILINESTRING);
+            addGISDatatype(MySQLConstants.TYPE_MULTIPOLYGON);
+            addGISDatatype(MySQLConstants.TYPE_GEOMETRYCOLLECTION);
+
         }
         if (isMariaDB() && isServerVersionAtLeast(10, 7) && dataTypeCache.getCachedObject(MySQLConstants.TYPE_UUID) == null) {
             // Not supported by MariaDB driver for now (3.0.8). Waiting for the driver support
@@ -426,6 +445,18 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
         }
     }
 
+    private void addGISDatatype(String typeGeometry) {
+        dataTypeCache.cacheObject(new JDBCDataType<>(this,
+            Types.OTHER,
+            typeGeometry.toUpperCase(Locale.ROOT),
+            typeGeometry.toUpperCase(Locale.ROOT),
+            false,
+            true,
+            0,
+            0,
+            0));
+    }
+
     @Override
     public DBSObject refreshObject(@NotNull DBRProgressMonitor monitor)
         throws DBException {
@@ -493,6 +524,11 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
                     inServerTimezoneHandle = false;
                     throw e2;
                 }
+            } else if (
+                SQLState.getCodeFromException(e) == MySQLConstants.ER_MUST_CHANGE_PASSWORD_LOGIN &&
+                DBAuthUtils.promptAndChangePasswordForCurrentUser(monitor, container, this::changeUserPassword)
+            ) {
+                return openConnection(monitor, context, purpose);
             } else {
                 throw e;
             }
@@ -538,7 +574,7 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
                 }
             }
         } catch (SQLException ex) {
-            throw new DBException(ex, this);
+            throw new DBDatabaseException(ex, this);
         }
     }
 
@@ -642,7 +678,7 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
                 }
             }
         } catch (SQLException ex) {
-            throw new DBException(ex, this);
+            throw new DBDatabaseException(ex, this);
         }
     }
 
@@ -689,7 +725,7 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
                 }
             }
         } catch (SQLException ex) {
-            throw new DBException(ex, this);
+            throw new DBDatabaseException(ex, this);
         }
     }
 
@@ -734,6 +770,10 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
     @Override
     public Collection<? extends DBSDataType> getLocalDataTypes() {
         return dataTypeCache.getCachedObjects();
+    }
+
+    public JDBCBasicDataTypeCache<MySQLDataSource, JDBCDataType> getDataTypeCache() {
+        return dataTypeCache;
     }
 
     @Override
@@ -1069,9 +1109,28 @@ public class MySQLDataSource extends JDBCDataSource implements DBPObjectStatisti
             if (propertyValue == null) {
                 connectProps.remove(prohibitedDriverProperty);
             } else {
-                log.debug("Set " + prohibitedDriverProperty + ":" + propertyValue);
+                log.trace("Set " + prohibitedDriverProperty + ":" + propertyValue);
                 connectProps.put(prohibitedDriverProperty, propertyValue);
             }
+        }
+    }
+
+    private void changeUserPassword(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull String userName,
+        @NotNull String newPassword,
+        @NotNull String oldPassword
+    ) throws DBException {
+        container.getActualConnectionConfiguration().setProperty("disconnectOnExpiredPasswords", "false");
+        try (Connection connection = super.openConnection(monitor, null, "Change expired password")) {
+            try (Statement stmt = connection.createStatement()) {
+                stmt.execute("SET PASSWORD = %s REPLACE %s".formatted(
+                    SQLUtils.quoteString(this, newPassword),
+                    SQLUtils.quoteString(this, oldPassword)
+                ));
+            }
+        } catch (SQLException e) {
+            throw new DBDatabaseException("Unable to change expired password", e);
         }
     }
 }

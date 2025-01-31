@@ -17,15 +17,26 @@
 package org.jkiss.dbeaver.model.websocket.event;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.model.websocket.WSConstants;
 
 import java.util.List;
 
 public class WSUserCloseSessionsEvent extends WSAbstractEvent {
+    public static final String ID = "cb_close_user_sessions";
     @NotNull
     private final List<String> sessionIds;
 
     public WSUserCloseSessionsEvent(@NotNull List<String> sessionIds) {
-        super(WSEventType.CLOSE_USER_SESSIONS);
+        this(sessionIds, null, null);
+    }
+
+    public WSUserCloseSessionsEvent(
+        @NotNull List<String> sessionIds,
+        @Nullable String initiatorSessionId,
+        @Nullable String userId
+    ) {
+        super(ID, WSConstants.TOPIC_USER, initiatorSessionId, userId);
         this.sessionIds = sessionIds;
     }
 

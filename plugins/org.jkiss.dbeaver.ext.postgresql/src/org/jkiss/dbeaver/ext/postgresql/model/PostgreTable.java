@@ -18,14 +18,17 @@ package org.jkiss.dbeaver.ext.postgresql.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.postgresql.PostgreConstants;
 import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
+import org.jkiss.dbeaver.ext.postgresql.internal.PostgreSQLMessages;
 import org.jkiss.dbeaver.model.DBPScriptObject;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttribute;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttributeContainer;
+import org.jkiss.dbeaver.model.data.DBDPseudoAttributeType;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
@@ -41,14 +44,13 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.cache.SimpleObjectCache;
 import org.jkiss.utils.CommonUtils;
+import org.jkiss.utils.Pair;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * PostgreTable
@@ -107,12 +109,15 @@ public abstract class PostgreTable extends PostgreTableReal
 
         this.partitionKey = source.partitionKey;
 
-        for (PostgreIndex srcIndex : CommonUtils.safeCollection(source.getIndexes(monitor))) {
-            if (srcIndex.isPrimaryKeyIndex()) {
-                continue;
+        PostgreSchema.IndexCache indexCache = getSchema().getIndexCache();
+        if (indexCache != null) {
+            for (PostgreIndex srcIndex : CommonUtils.safeCollection(source.getIndexes(monitor))) {
+                if (srcIndex.isPrimaryKeyIndex()) {
+                    continue;
+                }
+                PostgreIndex constr = new PostgreIndex(monitor, this, srcIndex);
+                indexCache.cacheObject(constr);
             }
-            PostgreIndex constr = new PostgreIndex(monitor, this, srcIndex);
-            getSchema().getIndexCache().cacheObject(constr);
         }
 
 /*
@@ -152,8 +157,7 @@ public abstract class PostgreTable extends PostgreTableReal
     }
 
     @Override
-    public boolean isView()
-    {
+    public boolean isView() {
         return false;
     }
 
@@ -214,8 +218,11 @@ public abstract class PostgreTable extends PostgreTableReal
     }
 
     @Override
-    public Collection<PostgreIndex> getIndexes(DBRProgressMonitor monitor) throws DBException {
-        return getSchema().getIndexCache().getObjects(monitor, getSchema(), this);
+    public Collection<PostgreIndex> getIndexes(@NotNull DBRProgressMonitor monitor) throws DBException {
+        if (!getDataSource().getServerType().supportsIndexes()) {
+            return Collections.emptyList();
+        }
+        return getSchema().getIndexes(monitor, this);
     }
 
     @Override
@@ -223,13 +230,22 @@ public abstract class PostgreTable extends PostgreTableReal
         return DBStructUtils.generateTableDDL(monitor, this, options, false);
     }
 
+    private boolean hasOidPseudoAttribute() {
+        return this.hasOids && getDataSource().getServerType().supportsOids();
+    }
+
     @Override
     public DBDPseudoAttribute[] getPseudoAttributes() {
-        if (this.hasOids && getDataSource().getServerType().supportsOids()) {
+        if (this.hasOidPseudoAttribute()) {
             return new DBDPseudoAttribute[]{PostgreConstants.PSEUDO_ATTR_OID};
         } else {
             return null;
         }
+    }
+
+    @Override
+    public DBDPseudoAttribute[] getAllPseudoAttributes(@NotNull DBRProgressMonitor monitor) throws DBException {
+        return DBDPseudoAttribute.EMPTY_ARRAY;
     }
 
     @Association
@@ -253,6 +269,9 @@ public abstract class PostgreTable extends PostgreTableReal
 
     @Override
     public Collection<? extends DBSEntityAssociation> getReferences(@NotNull DBRProgressMonitor monitor) throws DBException {
+        if (monitor == null) {
+            return null;
+        }
         List<DBSEntityAssociation> refs = new ArrayList<>(
             CommonUtils.safeList(getSubInheritance(monitor)));
         // Obtain a list of schemas containing references to this table to avoid fetching everything
@@ -276,7 +295,7 @@ public abstract class PostgreTable extends PostgreTableReal
                     }
                 }
             } catch (SQLException e) {
-                throw new DBException(e, getDataSource());
+                throw new DBDatabaseException(e, getDataSource());
             }
         }
         return refs;
@@ -323,7 +342,7 @@ public abstract class PostgreTable extends PostgreTableReal
 
     @Nullable
     public List<PostgreTableInheritance> getSuperInheritance(DBRProgressMonitor monitor) throws DBException {
-        if (superTables == null && getDataSource().getServerType().supportsInheritance() && isPersisted()) {
+        if (superTables == null && getDataSource().getServerType().supportsInheritance() && isPersisted() && monitor != null) {
             superTables = initSuperTables(monitor);
         }
         return superTables == null || superTables.isEmpty() ? null : superTables;

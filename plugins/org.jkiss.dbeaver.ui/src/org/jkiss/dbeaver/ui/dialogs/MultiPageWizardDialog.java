@@ -27,10 +27,8 @@ import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.wizard.*;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
-import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
-import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
@@ -49,6 +47,8 @@ import org.jkiss.utils.CommonUtils;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * MultiPageWizardDialog
@@ -76,7 +76,7 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
 
     private final ListenerList<IPageChangedListener> pageChangedListeners = new ListenerList<>();
     private Composite leftBottomPanel;
-    private Font boldFont;
+    private final Set<IWizardPage> resizedPages = new HashSet<>();
 
     public MultiPageWizardDialog(IWorkbenchWindow window, IWizard wizard) {
         this(window, wizard, null);
@@ -181,8 +181,6 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
         Composite leftPane = UIUtils.createComposite(wizardSash, 1);
         pagesTree = new Tree(leftPane, SWT.SINGLE);
         pagesTree.setLayoutData(new GridData(GridData.FILL_BOTH));
-        this.boldFont = UIUtils.makeBoldFont(pagesTree.getFont());
-        pagesTree.addDisposeListener(e -> UIUtils.dispose(boldFont));
 
         leftPane.setBackground(pagesTree.getBackground());
         leftBottomPanel = UIUtils.createComposite(leftPane, 1);
@@ -194,9 +192,7 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
         // Vertical separator
         new Label(pageContainer, SWT.SEPARATOR | SWT.VERTICAL)
             .setLayoutData(new GridData(SWT.LEFT, SWT.FILL, false, true));
-        ScrolledComposite scrolledComposite = UIUtils.createScrolledComposite(pageContainer);
-        pageArea = UIUtils.createPlaceholder(scrolledComposite, 1);
-        UIUtils.configureScrolledComposite(scrolledComposite, pageArea);
+        pageArea = UIUtils.createPlaceholder(pageContainer, 1);
         GridData gd = new GridData(GridData.FILL_BOTH);
         pageArea.setLayoutData(gd);
         pageArea.setLayout(new GridLayout(1, true));
@@ -323,13 +319,6 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
             pageArea.layout();
             if (prevPage.getControl() != null) {
                 prevPage.getControl().setFocus();
-            }
-            if (pageCreated && isAutoLayoutAvailable()) {
-                UIUtils.asyncExec(() -> {
-                    if (wizard.getContainer().getShell() != null) {
-                        UIUtils.resizeShell(wizard.getContainer().getShell());
-                    }
-                });
             }
 
             if (page instanceof ActiveWizardPage<?> awp) {
@@ -697,6 +686,7 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
                 }
             });
         }
+        updateSize();
     }
 
     @Override
@@ -705,11 +695,12 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
     }
 
     private void updateSize(IWizardPage page) {
-        if (page == null || page.getControl() == null) {
+        if (page == null || page.getControl() == null || resizedPages.contains(page)) {
             return;
         }
         updateSizeForPage(page);
         pageArea.layout();
+        resizedPages.add(page);
     }
 
     /**
@@ -718,14 +709,24 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
      * @param page the wizard page
      */
     private void updateSizeForPage(IWizardPage page) {
-        // ensure the page container is large enough
-        Point delta = calculatePageSizeDelta(page);
-        if (delta.x > 0 || delta.y > 0) {
-            // increase the size of the shell
-            Shell shell = getShell();
-            Point shellSize = shell.getSize();
-            setShellSize(shellSize.x + delta.x, shellSize.y + delta.y);
-            constrainShellSize();
+        if (isAutoLayoutAvailable() &&
+            (!(page instanceof  ActiveWizardPage<?> awp) || awp.isAutoResizeEnabled())) {
+            UIUtils.asyncExec(() -> {
+                Point pageCompSize = page.getControl().computeSize(SWT.DEFAULT, SWT.DEFAULT);
+                for (Control parent = page.getControl().getParent(); parent != null; parent = parent.getParent()) {
+                    if (parent instanceof SashForm) {
+                        pageCompSize = parent.computeSize(SWT.DEFAULT, SWT.DEFAULT);
+                        break;
+                    }
+                }
+                Point shellCompSize = getShell().computeSize(SWT.DEFAULT, SWT.DEFAULT);
+                if (shellCompSize.y > pageCompSize.y) {
+                    pageCompSize.y = shellCompSize.y;
+                }
+                UIUtils.resizeShell(
+                    getShell(),
+                    pageCompSize);
+            });
         }
     }
 

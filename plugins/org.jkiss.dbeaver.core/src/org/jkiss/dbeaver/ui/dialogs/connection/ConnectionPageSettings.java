@@ -26,10 +26,7 @@ import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.custom.CTabFolder;
-import org.eclipse.swt.custom.CTabFolder2Adapter;
-import org.eclipse.swt.custom.CTabFolderEvent;
-import org.eclipse.swt.custom.CTabItem;
+import org.eclipse.swt.custom.*;
 import org.eclipse.swt.events.KeyListener;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -37,7 +34,6 @@ import org.eclipse.swt.events.SelectionListener;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
-import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
 import org.jkiss.code.NotNull;
@@ -49,12 +45,12 @@ import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
-import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverSubstitutionDescriptor;
 import org.jkiss.dbeaver.model.exec.DBCSession;
 import org.jkiss.dbeaver.model.net.DBWHandlerConfiguration;
+import org.jkiss.dbeaver.model.rcp.RCPProject;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.registry.DataSourceDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
@@ -63,6 +59,7 @@ import org.jkiss.dbeaver.registry.DataSourceViewRegistry;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerDescriptor;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerRegistry;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.dialogs.ActiveWizardPage;
 import org.jkiss.dbeaver.ui.dialogs.ConfirmationDialog;
@@ -96,8 +93,6 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
     @Nullable
     private IDataSourceConnectionEditor connectionEditor;
     private IDataSourceConnectionEditor originalConnectionEditor;
-    @Nullable
-    private final DataSourceDescriptor dataSource;
     private final Set<DataSourceDescriptor> activated = new HashSet<>();
     private IDialogPage[] subPages, extraPages;
     private CTabFolder tabFolder;
@@ -108,14 +103,12 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
     ConnectionPageSettings(
         @NotNull ConnectionWizard wizard,
         @NotNull DataSourceViewDescriptor viewDescriptor,
-        @Nullable DataSourceDescriptor dataSource,
         @Nullable DBPDriverSubstitutionDescriptor driverSubstitution
     ) {
         super(PAGE_NAME + "." + viewDescriptor.getId());
 
         this.wizard = wizard;
         this.viewDescriptor = viewDescriptor;
-        this.dataSource = dataSource;
         this.driverSubstitution = driverSubstitution;
 
         if (driverSubstitution != null) {
@@ -191,6 +184,7 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
             control.setRedraw(true);
         }
         //getContainer().updateTitleBar();
+        UIUtils.asyncExec(() -> connectionEditor.activateEditor());
     }
 
     @Override
@@ -229,7 +223,7 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
             }
         }
         // Save connection settings AFTER extra pages.
-        // Because it may contain some driver properties save which will be overwrited by driver props page otherwise
+        // Because it may contain some driver properties save which will be overwritten by driver props page otherwise
         if (connectionEditor != null) {
             connectionEditor.saveSettings(dataSource);
         }
@@ -424,13 +418,10 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
         item.setToolTipText(page.getDescription());
 
         if (page.getControl() == null) {
-            final Composite placeholder = new Composite(tabFolder, SWT.NONE);
-            placeholder.setLayout(new FillLayout());
-            item.setControl(placeholder);
+            // TODO: We should respect pages that might not want to be scrollable (e.g. if they have their own scrollable controls)
+            item.setControl(UIUtils.createScrolledComposite(tabFolder, SWT.H_SCROLL | SWT.V_SCROLL));
         } else {
-            final Control control = page.getControl();
-            control.setParent(tabFolder);
-            item.setControl(control);
+            item.setControl(page.getControl().getParent());
         }
 
         return item;
@@ -443,12 +434,15 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
                 IDialogPage page = (IDialogPage) selection.getData();
                 if (page.getControl() == null) {
                     // Create page
-                    Composite panel = (Composite) selection.getControl();
+                    ScrolledComposite panel = (ScrolledComposite) selection.getControl();
                     panel.setRedraw(false);
                     try {
                         page.createControl(panel);
                         Dialog.applyDialogFont(panel);
+                        UIUtils.configureScrolledComposite(panel, page.getControl());
                         panel.layout(true, true);
+                    } catch (Throwable e) {
+                        DBWorkbench.getPlatformUI().showError("Error creating configuration page", null, e);
                     } finally {
                         panel.setRedraw(true);
                     }
@@ -503,7 +497,8 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
             }
         }
         return wizard.getPageSettings() != this ||
-            this.connectionEditor != null && this.connectionEditor.isComplete();
+            this.connectionEditor != null &&
+                (this.connectionEditor.isExternalConfigurationProvided() || this.connectionEditor.isComplete());
     }
 
     @Override
@@ -541,9 +536,6 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
     @NotNull
     @Override
     public DataSourceDescriptor getActiveDataSource() {
-        if (dataSource != null) {
-            return dataSource;
-        }
         return wizard.getActiveDataSource();
     }
 
@@ -570,9 +562,9 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
     }
 
     @Override
-    public DBPProject getProject() {
+    public RCPProject getProject() {
         DBPDataSourceRegistry registry = wizard.getDataSourceRegistry();
-        return registry == null ? null : registry.getProject();
+        return registry == null ? null : (RCPProject) registry.getProject();
     }
 
     @Override
@@ -596,6 +588,12 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
         if (connectionEditor != null) {
             connectionEditor.dispose();
             connectionEditor = null;
+        }
+        if (extraPages != null) {
+            for (IDialogPage ep : extraPages) {
+                ep.dispose();
+            }
+            extraPages = null;
         }
         super.dispose();
     }

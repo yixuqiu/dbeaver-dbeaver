@@ -34,21 +34,45 @@ lexer grammar SQLStandardLexer;
      * limitations under the License.
      */
     package org.jkiss.dbeaver.model.lsm.sql.impl.syntax;
+
+    import java.util.*;
+    import org.jkiss.dbeaver.model.sql.*;
+    import org.jkiss.dbeaver.model.lsm.*;
 }
 
 @lexer::members {
-    private java.util.Map<String, String> knownIdentifierQuotes = java.util.Collections.emptyMap();
+    private Map<String, String> knownIdentifierQuotes = Collections.emptyMap();
     private int[] knownIdentifierQuoteHeads = new int[0];
     private int knownIdentifierLongestHead = 0;
     private int lastIdentifierStart = 0;
     private int lastIdentifierEnd = 0;
     private int lastIdentifierLength = 0;
 
-    public SQLStandardLexer(CharStream input, java.util.Map<String, String> knownIdentifierQuotes) {
+    private boolean isAnonymousParametersEnabled;
+    private boolean isNamedParametersEnabled;
+
+    private boolean useCustomAnonymousParamMark;
+    private char customAnonymousParamMark;
+
+    private boolean useCustomNamedParamPrefix;
+    private List<Map.Entry<Integer, Set<String>>> customNamedParamPrefixes;
+
+    public SQLStandardLexer(CharStream input, LSMAnalyzerParameters parameters) {
         this(input);
-        this.knownIdentifierQuotes = knownIdentifierQuotes;
-        this.knownIdentifierLongestHead = knownIdentifierQuotes.size() < 1 ? 0 : knownIdentifierQuotes.keySet().stream().mapToInt(k -> k.length()).max().getAsInt();
-        this.knownIdentifierQuoteHeads = knownIdentifierQuotes.keySet().stream().mapToInt(s -> s.charAt(0)).toArray();
+        this.knownIdentifierQuotes = parameters.knownIdentifierQuotes();
+        this.knownIdentifierLongestHead = this.knownIdentifierQuotes.size() < 1 ? 0 : knownIdentifierQuotes.keySet().stream().mapToInt(k -> k.length()).max().getAsInt();
+        this.knownIdentifierQuoteHeads = this.knownIdentifierQuotes.keySet().stream().mapToInt(s -> s.charAt(0)).toArray();
+
+        this.isAnonymousParametersEnabled = parameters.isAnonymousSqlParametersEnabled();
+        this.isNamedParametersEnabled = parameters.isSqlParametersEnabled();
+
+        this.useCustomAnonymousParamMark = parameters.isAnonymousSqlParametersEnabled() && Character.compare(parameters.anonymousParameterMark(), SQLConstants.DEFAULT_PARAMETER_MARK) != 0;
+        this.customAnonymousParamMark = parameters.anonymousParameterMark();
+
+        this.useCustomNamedParamPrefix = parameters.isSqlParametersEnabled() && parameters.namedParameterPrefixes().stream().map(e -> e.getValue()).anyMatch(
+            ss -> ss.contains(String.valueOf(SQLConstants.DEFAULT_PARAMETER_PREFIX)) ? ss.size() > 1 : ss.size() > 0
+        );
+        this.customNamedParamPrefixes = parameters.namedParameterPrefixes();
     }
 
     private class QuottedIdentifierConsumer {
@@ -147,14 +171,49 @@ lexer grammar SQLStandardLexer;
         return _input.index() < lastIdentifierEnd;
     }
 
-    int cnt;
+    int lastNamedParameterPrefixEnd = -1;
+
+    private boolean tryConsumeNamedParameterPrefix(final CharStream input) {
+        if (input.index() < 1) {
+            lastNamedParameterPrefixEnd = -1;
+            return false;
+        }
+
+        int pos = 0;
+        String captured = "";
+        for (Map.Entry<Integer, Set<String>> e: this.customNamedParamPrefixes) {
+            int prefixLength = e.getKey();
+            while (captured.length() < prefixLength) {
+                int c = input.LA(++pos);
+                if (c == EOF) {
+                    lastNamedParameterPrefixEnd = -1;
+                    return false;
+                } else {
+                    captured += (char)c;
+                }
+            }
+            if (e.getValue().contains(captured)) {
+                lastNamedParameterPrefixEnd = input.index() + captured.length();
+                return true;
+            }
+        }
+
+        lastNamedParameterPrefixEnd = -1;
+        return false;
+    }
+
+    private boolean isNamedParameterPrefixEndReached(final CharStream input) {
+        return _input.index() < lastNamedParameterPrefixEnd;
+    }
+
 }
 
 DelimitedIdentifier: { tryConsumeQuottedIdentifier(_input) }? ({isIdentifierEndReached(_input)}? .)+;
 
+CustomAnonymousParameterMark: { useCustomAnonymousParamMark && _input.index() >=0 && (char)_input.LA(1) == customAnonymousParamMark }? . ;
+CustomNamedParameterPrefix: { useCustomNamedParamPrefix && tryConsumeNamedParameterPrefix(_input) }? ({isNamedParameterPrefixEndReached(_input)}? .)+;
 BatchVariableName: At Identifier;
 ClientVariableName: Dollar LeftBrace Identifier RightBrace;
-ClientParameterName: Colon Identifier;
 
 // letters to support case-insensitivity for keywords
 fragment A:[aA];
@@ -192,6 +251,7 @@ ALL: A L L ;
 ALTER: A L T E R ;
 AND: A N D ;
 ANY: A N Y ;
+ARRAY: A R R A Y;
 AS: A S ;
 ASC: A S C ;
 AUTHORIZATION: A U T H O R I Z A T I O N ;
@@ -214,7 +274,7 @@ CORRESPONDING: C O R R E S P O N D I N G ;
 COUNT: C O U N T ;
 CREATE: C R E A T E ;
 CROSS: C R O S S ;
-CURRENT_USER: C U R R E N T '_'U S E R ;
+CURRENT_USER: C U R R E N T '_' U S E R ;
 DATE: D A T E ;
 DAY: D A Y ;
 DEFAULT: D E F A U L T ;
@@ -235,10 +295,13 @@ FILTER: F I L T E R ;
 FOREIGN: F O R E I G N ;
 FROM: F R O M ;
 FULL: F U L L ;
+FUNCTION: F U N C T I O N ;
 GLOBAL: G L O B A L ;
 GROUP: G R O U P ;
 HAVING: H A V I N G ;
 HOUR: H O U R ;
+IF: I F ;
+ILIKE: I L I K E ;
 IMMEDIATE: I M M E D I A T E ;
 IN: I N ;
 INDICATOR: I N D I C A T O R ;
@@ -267,6 +330,7 @@ NOT: N O T ;
 NOTNULL: N O T N U L L;
 NULL: N U L L ;
 NULLIF: N U L L I F ;
+OF: O F;
 OFFSET: O F F S E T;
 ON: O N ;
 ONLY: O N L Y ;
@@ -279,13 +343,16 @@ OVERLAPS: O V E R L A P S ;
 PARTIAL: P A R T I A L ;
 PARTITION: P A R T I T I O N ;
 PRESERVE: P R E S E R V E ;
+PROCEDURE: P R O C E D U R E ;
 PRIMARY: P R I M A R Y ;
 RANGE: R A N G E ;
 READ: R E A D ;
 RECURSIVE: R E C U R S I V E;
 REFERENCES: R E F E R E N C E S ;
 REGEXP: R E G E X P;
+RENAME : R E N A M E;
 REPEATABLE: R E P E A T A B L E ;
+REPLACE: R E P L A C E ;
 RESTRICT: R E S T R I C T ;
 RIGHT: R I G H T ;
 ROLLBACK: R O L L B A C K ;
@@ -301,6 +368,7 @@ SET: S E T ;
 SOME: S O M E ;
 SYSTEM_USER: S Y S T E M '_'U S E R ;
 TABLE: T A B L E ;
+TEMP: T E M P ;
 TEMPORARY: T E M P O R A R Y ;
 THEN: T H E N ;
 TIME: T I M E ;
@@ -403,7 +471,7 @@ Space: [ \t]+;
 
 Identifier: IdentifierBody;
 fragment IdentifierBody: IdentifierStart ((Underscore|IdentifierPart)+)?;
-fragment IdentifierStart: SimpleLatinLetter;
+fragment IdentifierStart: SimpleLatinLetter|Underscore;
 fragment IdentifierPart: (IdentifierStart|Digit);
 
 

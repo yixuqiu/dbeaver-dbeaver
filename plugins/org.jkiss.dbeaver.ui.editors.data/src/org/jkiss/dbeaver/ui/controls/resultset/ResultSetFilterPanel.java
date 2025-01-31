@@ -61,6 +61,9 @@ import org.jkiss.dbeaver.ui.contentassist.ContentAssistUtils;
 import org.jkiss.dbeaver.ui.contentassist.ContentProposalExt;
 import org.jkiss.dbeaver.ui.controls.DoubleClickMouseAdapter;
 import org.jkiss.dbeaver.ui.controls.StyledTextUtils;
+import org.jkiss.dbeaver.ui.controls.resultset.actions.FilterResetAllPinsAction;
+import org.jkiss.dbeaver.ui.controls.resultset.actions.FilterResetAllSettingsAction;
+import org.jkiss.dbeaver.ui.controls.resultset.actions.FilterResetAllTransformersAction;
 import org.jkiss.dbeaver.ui.controls.resultset.colors.ResetAllColorAction;
 import org.jkiss.dbeaver.ui.controls.resultset.handler.ResultSetHandlerMain;
 import org.jkiss.dbeaver.ui.controls.resultset.internal.ResultSetMessages;
@@ -103,13 +106,11 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
 
     private ToolBar filterToolbar;
     private ToolItem filtersClearButton;
-    private ToolItem filtersSaveButton;
     private ToolItem historyBackButton;
     private ToolItem historyForwardButton;
 
     private final Composite filterComposite;
 
-    private final Color hoverBgColor;
     private final Color shadowColor;
 
     private String activeDisplayName = ResultSetViewer.DEFAULT_QUERY_TEXT;
@@ -123,6 +124,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         super(parent, SWT.NONE);
         this.viewer = rsv;
         this.compactMode = compactMode;
+
         CSSUtils.setCSSClass(this, DBStyles.COLORED_BY_CONNECTION_TYPE);
 
         GridLayout gl = new GridLayout(compactMode ? 2 : 4, false);
@@ -131,11 +133,11 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         this.setLayout(gl);
 
         boolean isDark = UIStyles.isDarkTheme();
-        this.hoverBgColor = getDisplay().getSystemColor(isDark ? SWT.COLOR_WIDGET_NORMAL_SHADOW : SWT.COLOR_WIDGET_LIGHT_SHADOW);
         this.shadowColor = getDisplay().getSystemColor(isDark ? SWT.COLOR_WIDGET_LIGHT_SHADOW : SWT.COLOR_WIDGET_NORMAL_SHADOW);
 
         {
             this.filterComposite = new Composite(this, SWT.BORDER);
+
             gl = new GridLayout(5, false);
             gl.marginHeight = 0;
             gl.marginWidth = 0;
@@ -154,11 +156,12 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
 
             this.filtersTextViewer = new TextViewer(filterComposite, SWT.MULTI);
             this.filtersTextViewer.setDocument(new Document());
-            this.filtersTextViewer.getTextWidget().setForeground(UIStyles.getDefaultTextForeground());
+            this.filtersText = this.filtersTextViewer.getTextWidget();
+            this.filtersText.setForeground(UIStyles.getDefaultTextForeground());
+            this.filtersText.setFont(BaseThemeSettings.instance.baseFont);
             TextViewerUndoManager undoManager = new TextViewerUndoManager(200);
             undoManager.connect(filtersTextViewer);
             this.filtersTextViewer.setUndoManager(undoManager);
-            this.filtersText = this.filtersTextViewer.getTextWidget();
 
             GridData gd = new GridData(GridData.FILL_BOTH);
             gd.verticalIndent = 1;
@@ -265,32 +268,13 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
             filtersClearButton.addSelectionListener(new EraseItemListener());
             filtersClearButton.setEnabled(false);
 
-            if (viewer.getDataContainer() instanceof DBSEntity) {
-                filtersSaveButton = new ToolItem(filterToolbar, SWT.PUSH | SWT.NO_FOCUS);
-                filtersSaveButton.setImage(DBeaverIcons.getImage(UIIcon.FILTER_SAVE));
-                filtersSaveButton.setToolTipText(ActionUtils.findCommandDescription(ResultSetHandlerMain.CMD_FILTER_SAVE_SETTING, viewer.getSite(), false));
-                filtersSaveButton.addSelectionListener(new SelectionAdapter() {
-                    @Override
-                    public void widgetSelected(SelectionEvent e) {
-                        viewer.saveDataFilter();
-                    }
-                });
-            } else {
-                filtersSaveButton = null;
-            }
-
-            ToolItem filtersCustomButton = new ToolItem(filterToolbar, SWT.PUSH | SWT.NO_FOCUS);
+            ToolItem filtersCustomButton = new ToolItem(filterToolbar, SWT.NO_FOCUS | SWT.DROP_DOWN);
             filtersCustomButton.setImage(DBeaverIcons.getImage(UIIcon.FILTER));
             filtersCustomButton.setToolTipText(ActionUtils.findCommandDescription(ResultSetHandlerMain.CMD_FILTER_EDIT_SETTINGS, viewer.getSite(), false));
-            filtersCustomButton.addSelectionListener(new SelectionAdapter() {
-                @Override
-                public void widgetSelected(SelectionEvent e) {
-                    viewer.showFilterSettingsDialog();
-                }
-            });
             filtersCustomButton.setEnabled(true);
+            filtersCustomButton.addSelectionListener(new CustomFilterListener());
 
-            UIUtils.createToolBarSeparator(filterToolbar, SWT.VERTICAL);
+            //UIUtils.createToolBarSeparator(filterToolbar, SWT.VERTICAL);
 
             historyBackButton = new ToolItem(filterToolbar, SWT.DROP_DOWN | SWT.NO_FOCUS);
             historyBackButton.setImage(DBeaverIcons.getImage(UIIcon.RS_BACK));
@@ -302,6 +286,13 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
             historyForwardButton.setEnabled(false);
             historyForwardButton.addSelectionListener(new HistoryMenuListener(historyForwardButton, false));
         }
+
+        CSSUtils.setMimicControl(this, filtersText);
+        CSSUtils.setMimicControl(this.filterComposite, filtersText);
+        if (filterExpandPanel != null) CSSUtils.setMimicControl(filterExpandPanel, filtersText);
+        if (executePanel != null) CSSUtils.setMimicControl(executePanel, filtersText);
+        if (historyPanel != null) CSSUtils.setMimicControl(historyPanel, filtersText);
+        if (filterToolbar != null) CSSUtils.setMimicControl(filterToolbar, filtersText);
 
         this.addControlListener(new ControlListener() {
             @Override
@@ -344,9 +335,6 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
 //                    viewer.getModel().getDataFilter().hasFilters() ||
 //                    viewer.getModel().getDataFilter().hasOrdering() ||
 //                    !CommonUtils.isEmpty(filterText));
-            }
-            if (filtersSaveButton != null) {
-                filtersSaveButton.setEnabled(viewer.getDataContainer() instanceof DBSEntity);
             }
             // Update history buttons
             if (historyBackButton != null) {
@@ -396,12 +384,14 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         setRedraw(false);
         try {
             if (filterToolbar != null) {
-                filterToolbar.setEnabled(enable);
+                filterToolbar.setVisible(enable);
             }
-            this.filterExpandPanel.setEnabled(enable);
-            historyPanel.setEnabled(enable);
+            this.filterExpandPanel.setVisible(enable);
+            historyPanel.setVisible(enable);
             filtersText.setEditable(viewer.supportsDataFilter());
-            executePanel.setEnabled(enable);
+            filtersText.setEnabled(enable);
+            //filtersText.setVisible(enable);
+            executePanel.setVisible(enable);
         } finally {
             setRedraw(true);
         }
@@ -440,7 +430,8 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         if (dataContainer instanceof DBSEntity) {
             DBPDataSource dataSource = viewer.getDataContainer().getDataSource();
             if (dataSource != null) {
-                DBNDatabaseNode dcNode = DBWorkbench.getPlatform().getNavigatorModel().findNode(dataContainer);
+                DBNDatabaseNode dcNode = dataContainer.getDataSource().getContainer().getProject()
+                    .getNavigatorModel().findNode(dataContainer);
                 if (dcNode != null) {
                     return dcNode.getNodeIcon();
                 }
@@ -507,7 +498,18 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         }
         String condition = filtersText.getText();
         StringBuilder currentCondition = new StringBuilder();
-        SQLUtils.appendConditionString(viewer.getModel().getDataFilter(), context.getDataSource(), null, currentCondition, true);
+        try {
+            SQLUtils.appendConditionString(
+                viewer.getModel().getDataFilter(),
+                context.getDataSource(),
+                null,
+                currentCondition,
+                true
+            );
+        } catch (DBException e) {
+            DBWorkbench.getPlatformUI().showError("Can't set filter", "Cannot set custom filter", e);
+            return;
+        }
         if (currentCondition.toString().trim().equals(condition.trim())) {
             // The same
             return;
@@ -653,7 +655,14 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         searchJob.schedule();
         UIUtils.waitJobCompletion(searchJob);
 
-        String[] filterKeywords = { SQLConstants.KEYWORD_AND, SQLConstants.KEYWORD_OR, SQLConstants.KEYWORD_IS, SQLConstants.KEYWORD_NOT, SQLConstants.KEYWORD_NULL };
+        String[] filterKeywords = {
+            SQLConstants.KEYWORD_AND,
+            SQLConstants.KEYWORD_OR,
+            SQLConstants.KEYWORD_IS,
+            SQLConstants.KEYWORD_NOT,
+            SQLConstants.KEYWORD_NULL,
+            SQLConstants.KEYWORD_BETWEEN,
+            SQLConstants.KEYWORD_LIKE};
 
         for (String kw : filterKeywords) {
             if (attrName.isEmpty() || kw.startsWith(attrName.toUpperCase())) {
@@ -675,7 +684,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         return null;
     }
 
-    private class FilterPanel extends Canvas {
+    private static class FilterPanel extends Canvas {
         protected boolean hover = false;
         FilterPanel(Composite parent, int style) {
             super(parent, style);
@@ -714,7 +723,6 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         static final int MIN_INFO_PANEL_WIDTH = 300;
         static final int MIN_INFO_PANEL_HEIGHT = 100;
         static final int MAX_INFO_PANEL_HEIGHT = 400;
-        private final GC sizingGC;
         private Shell popup;
 
         ActiveObjectPanel(Composite addressBar) {
@@ -722,8 +730,6 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
             setToolTipText(ResultSetMessages.sql_editor_resultset_filter_panel_btn_open_console);
             //setLayoutData(new GridData(GridData.FILL_BOTH));
 
-            this.sizingGC = new GC(this);
-            this.addDisposeListener(e -> sizingGC.dispose());
             this.addMouseListener(new DoubleClickMouseAdapter() {
                 @Override
                 public void onMouseDoubleClick(@NotNull MouseEvent e) {
@@ -739,7 +745,6 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
 
         @Override
         public void dispose() {
-            sizingGC.dispose();
             super.dispose();
         }
 
@@ -764,29 +769,27 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
                 return;
             }
 
-            if (editControl != null) {
-                Point controlRect = editControl.computeSize(-1, -1);
+            Point controlRect = editControl.computeSize(-1, -1);
 
-                Rectangle parentRect = getDisplay().map(activeObjectPanel, null, getBounds());
-                Rectangle displayRect = getMonitor().getClientArea();
-                int width = Math.min(filterComposite.getSize().x, Math.max(MIN_INFO_PANEL_WIDTH, controlRect.x + 30));
-                int height = Math.min(MAX_INFO_PANEL_HEIGHT, Math.max(MIN_INFO_PANEL_HEIGHT, controlRect.y + 30));
-                int x = parentRect.x + e.x + 1;
-                int y = parentRect.y + e.y + 1;
-                if (y + height > displayRect.y + displayRect.height) {
-                    y = parentRect.y - height;
-                }
-                popup.setBounds(x, y, width, height);
-                popup.setVisible(true);
-                editControl.setFocus();
-
-                editControl.addFocusListener(new FocusAdapter() {
-                    @Override
-                    public void focusLost(FocusEvent e) {
-                        popup.dispose();
-                    }
-                });
+            Rectangle parentRect = getDisplay().map(activeObjectPanel, null, getBounds());
+            Rectangle displayRect = getMonitor().getClientArea();
+            int width = Math.min(filterComposite.getSize().x, Math.max(MIN_INFO_PANEL_WIDTH, controlRect.x + 30));
+            int height = Math.min(MAX_INFO_PANEL_HEIGHT, Math.max(MIN_INFO_PANEL_HEIGHT, controlRect.y + 30));
+            int x = parentRect.x + e.x + 1;
+            int y = parentRect.y + e.y + 1;
+            if (y + height > displayRect.y + displayRect.height) {
+                y = parentRect.y - height;
             }
+            popup.setBounds(x, y, width, height);
+            popup.setVisible(true);
+            editControl.setFocus();
+
+            editControl.addFocusListener(new FocusAdapter() {
+                @Override
+                public void focusLost(FocusEvent e) {
+                    popup.dispose();
+                }
+            });
         }
 
         @Override
@@ -795,14 +798,21 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
             for (Control control = viewer.getControl().getParent(); maxWidth == 0 && control != null; control = control.getParent()) {
                 maxWidth = control.getSize().x / 4;
             }
+            GC sizingGC = new GC(this);
+            sizingGC.setFont(BaseThemeSettings.instance.baseFont);
             Point textSize = sizingGC.textExtent(activeDisplayName);
+            int maxFilterTextWidth = sizingGC.textExtent("X".repeat(24)).x;
+            sizingGC.dispose();
             DBPImage activeObjectImage = getActiveObjectImage();
             if (activeObjectImage != null) {
                 Image image = DBeaverIcons.getImage(activeObjectImage);
                 textSize.x += image.getBounds().width + 4;
             }
+            if (textSize.x < maxFilterTextWidth) {
+                maxFilterTextWidth = textSize.x;
+            }
             return new Point(
-                Math.max(MIN_FILTER_TEXT_WIDTH, Math.min(textSize.x + 10, maxWidth)),
+                Math.max(maxFilterTextWidth, Math.min(textSize.x + 10, maxWidth)),
                 filterExpanded ? filtersText.getSize().y : Math.min(textSize.y + 6, MIN_FILTER_TEXT_HEIGHT));
         }
 
@@ -810,8 +820,15 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         protected void paintPanel(PaintEvent e) {
             Point hintSize = computeSize(SWT.DEFAULT, SWT.DEFAULT);
             int panelHeight = hintSize.y;
+            e.gc.setFont(BaseThemeSettings.instance.baseFont);
             e.gc.setForeground(shadowColor);
             if (hover) {
+                Color background = e.gc.getBackground();
+                boolean isDarkBG = UIUtils.isDark(background.getRGB());
+                RGB blendRGB = isDarkBG ? new RGB(255, 255, 255) : new RGB(0, 0, 0);
+                RGB hoverRgb = UIUtils.blend(background.getRGB(), blendRGB, 90);
+                Color hoverBgColor = UIUtils.getSharedTextColors().getColor(hoverRgb);
+
                 e.gc.setBackground(hoverBgColor);
                 e.gc.fillRectangle(e.x, e.y, e.width - 3, panelHeight);
                 e.gc.drawLine(
@@ -835,7 +852,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
                 textOffset += iconBounds.width + 2;
             }
             int textHeight = e.gc.getFontMetrics().getHeight();
-            e.gc.drawText(activeDisplayName, textOffset, 2);
+            e.gc.drawText(activeDisplayName, textOffset, (e.height - textHeight) / 2);
             e.gc.setClipping((Rectangle) null);
         }
     }
@@ -1158,7 +1175,18 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
                 return false;
             }
             StringBuilder currentCondition = new StringBuilder();
-            SQLUtils.appendConditionString(viewer.getModel().getDataFilter(), context.getDataSource(), null, currentCondition, true);
+            try {
+                SQLUtils.appendConditionString(
+                    viewer.getModel().getDataFilter(),
+                    context.getDataSource(),
+                    null,
+                    currentCondition,
+                    true
+                );
+            } catch (DBException e) {
+                log.error(e);
+                return false;
+            }
             return !currentCondition.toString().trim().equals(filtersText.getText().trim());
         }
 
@@ -1214,7 +1242,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         }
     }
 
-    private class EraseItemListener extends SelectionAdapter {
+    private abstract static class AbstractDropDownListener extends SelectionAdapter {
         private Menu ddMenu;
         private MenuManager menuManager;
 
@@ -1222,24 +1250,39 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         public void widgetSelected(SelectionEvent e) {
             if (e.detail == SWT.ARROW) {
                 ToolItem item = (ToolItem) e.widget;
-                fillDropDownMenu(item);
+                {
+                    if (menuManager == null) {
+                        menuManager = new MenuManager();
+                        item.addDisposeListener(e1 -> menuManager.dispose());
+                    } else {
+                        menuManager.removeAll();
+                    }
+
+                    fillDropDownMenu(menuManager);
+
+                    if (ddMenu == null) {
+                        ddMenu = menuManager.createContextMenu(item.getParent().getShell());
+                    } else {
+                        menuManager.update();
+                    }
+                }
                 Rectangle rect = item.getBounds();
                 Point pt = item.getParent().toDisplay(new Point(rect.x, rect.y));
                 ddMenu.setLocation(pt.x, pt.y + rect.height);
                 ddMenu.setVisible(true);
             } else {
-                viewer.clearDataFilter(true);
+                executeDefaultAction();
             }
         }
 
-        private void fillDropDownMenu(ToolItem item) {
-            if (menuManager == null) {
-                menuManager = new MenuManager();
-                item.addDisposeListener(e1 -> menuManager.dispose());
-            } else {
-                menuManager.removeAll();
-            }
+        protected abstract void fillDropDownMenu(MenuManager menuManager);
 
+        protected abstract void executeDefaultAction();
+    }
+
+    private class EraseItemListener extends AbstractDropDownListener {
+        @Override
+        protected void fillDropDownMenu(MenuManager menuManager) {
             menuManager.add(ActionUtils.makeCommandContribution(viewer.getSite(), ResultSetHandlerMain.CMD_FILTER_CLEAR_SETTING));
             if (viewer.getDataFilter().hasHiddenAttributes()) {
                 menuManager.add(ActionUtils.makeCommandContribution(
@@ -1260,11 +1303,29 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
             if (menuManager.getSize() > 1) {
                 menuManager.add(new FilterResetAllSettingsAction(viewer));
             }
-            if (ddMenu == null) {
-                ddMenu = menuManager.createContextMenu(item.getParent().getShell());
-            } else {
-                menuManager.update();
-            }
+        }
+
+        @Override
+        protected void executeDefaultAction() {
+            viewer.clearDataFilter(true);
         }
     }
+
+    private class CustomFilterListener extends AbstractDropDownListener {
+        @Override
+        protected void fillDropDownMenu(MenuManager menuManager) {
+            menuManager.add(ActionUtils.makeCommandContribution(
+                viewer.getSite(), ResultSetHandlerMain.CMD_FILTER_EDIT_SETTINGS));
+            if (viewer.getDataContainer() instanceof DBSEntity) {
+                menuManager.add(ActionUtils.makeCommandContribution(
+                    viewer.getSite(), ResultSetHandlerMain.CMD_FILTER_SAVE_SETTING));
+            }
+        }
+
+        @Override
+        protected void executeDefaultAction() {
+            viewer.showFilterSettingsDialog();
+        }
+    }
+
 }

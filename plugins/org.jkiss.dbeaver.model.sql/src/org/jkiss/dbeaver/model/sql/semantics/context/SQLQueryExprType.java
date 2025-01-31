@@ -21,6 +21,8 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBPDataKind;
 import org.jkiss.dbeaver.model.DBPDataSource;
+import org.jkiss.dbeaver.model.DBPIdentifierCase;
+import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.impl.sql.BasicSQLDialect;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
@@ -28,11 +30,11 @@ import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.sql.semantics.SQLQuerySymbolByDbObjectDefinition;
 import org.jkiss.dbeaver.model.sql.semantics.SQLQuerySymbolClass;
 import org.jkiss.dbeaver.model.sql.semantics.SQLQuerySymbolDefinition;
-import org.jkiss.dbeaver.model.sql.semantics.model.SQLQueryRowsSourceModel;
+import org.jkiss.dbeaver.model.sql.semantics.SQLQuerySymbolEntry;
+import org.jkiss.dbeaver.model.sql.semantics.model.select.SQLQueryRowsSourceModel;
 import org.jkiss.dbeaver.model.struct.*;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -40,11 +42,17 @@ import java.util.stream.Collectors;
  */
 public abstract class SQLQueryExprType {
 
-    public static final SQLQueryExprType UNKNOWN = new SQLQueryExprPredefinedType("UNKNOWN", DBPDataKind.UNKNOWN);
-    public static final SQLQueryExprType STRING = new SQLQueryExprPredefinedType("STRING", DBPDataKind.STRING);
-    public static final SQLQueryExprType BOOLEAN = new SQLQueryExprPredefinedType("BOOLEAN", DBPDataKind.BOOLEAN);
-    public static final SQLQueryExprType NUMERIC = new SQLQueryExprPredefinedType("NUMERIC", DBPDataKind.NUMERIC);
-    public static final SQLQueryExprType DATETIME = new SQLQueryExprPredefinedType("DATETIME", DBPDataKind.DATETIME);
+    private static final Map<DBPDataKind, SQLQueryExprType>  PREDEFINED_TYPES = Arrays.stream(DBPDataKind.values()).collect(Collectors.toMap(
+        k -> k,
+        k -> new SQLQueryExprPredefinedType(k.name().toUpperCase(), k)
+    ));
+
+    public static final SQLQueryExprType UNKNOWN = forPredefined(DBPDataKind.UNKNOWN);
+    public static final SQLQueryExprType STRING = forPredefined(DBPDataKind.STRING);
+    public static final SQLQueryExprType BOOLEAN = forPredefined(DBPDataKind.BOOLEAN);
+    public static final SQLQueryExprType NUMERIC = forPredefined(DBPDataKind.NUMERIC);
+    public static final SQLQueryExprType DATETIME = forPredefined(DBPDataKind.DATETIME);
+
     public static final SQLQueryExprType DUMMY = new SQLQueryExprDummyType(null);
     private static final SQLQueryExprType DUMMY_FIELD = new SQLQueryExprDummyType(() -> SQLQuerySymbolClass.COMPOSITE_FIELD);
 
@@ -90,6 +98,19 @@ public abstract class SQLQueryExprType {
         return null;
     }
 
+    public record SQLQueryExprTypeMemberInfo(
+        @NotNull SQLQueryExprType declaratorType,
+        @NotNull String name,
+        @NotNull SQLQueryExprType type,
+        @Nullable DBSEntityAttribute attribute,
+        @Nullable SQLQueryResultColumn column) {
+    }
+
+    @NotNull
+    public List<SQLQueryExprTypeMemberInfo> getNamedMembers(@NotNull DBRProgressMonitor monitor) throws DBException {
+        return Collections.emptyList();
+    }
+
     /**
      * Find an indexed member by the specified indexes and return corresponding item type if exists
      */
@@ -100,6 +121,13 @@ public abstract class SQLQueryExprType {
         @Nullable boolean[] slicingSpec
     ) throws DBException {
         return null;
+    }
+
+    @NotNull
+    public static SQLQueryExprType forPredefined(DBPDataKind dataKind) {
+        SQLQueryExprType result = PREDEFINED_TYPES.get(dataKind);
+        assert result != null;
+        return result;
     }
 
     /**
@@ -117,6 +145,10 @@ public abstract class SQLQueryExprType {
     @NotNull
     public static SQLQueryExprType forExplicitTypeRef(@NotNull String typeRefString) {
         return new SQLQueryExprPredefinedType(typeRefString, DBPDataKind.UNKNOWN);
+    }
+
+    public static SQLQueryExprType forReferencedRow(SQLQuerySymbolEntry reference, SourceResolutionResult referencedSource) {
+        return new SQLQueryExprRowType(reference, referencedSource);
     }
 
     /**
@@ -145,7 +177,7 @@ public abstract class SQLQueryExprType {
         }
         
         if (typedObj instanceof DBSTypedObjectEx2 typedEx2) {
-            SQLQueryExprType type = forDescribedIfPresented(monitor, typedObj, typedEx2.getTypeDescriptor(), declaratorDefinition);
+            SQLQueryExprType type = forDescribedIfPresented(monitor, typedObj, typedEx2.getTypeDescriptor(monitor), declaratorDefinition);
             if (type != null) {
                 return type;
             }
@@ -167,7 +199,7 @@ public abstract class SQLQueryExprType {
                 SQLDialect dialect = dataSource == null ? BasicSQLDialect.INSTANCE : dataSource.getSQLDialect();
                 List<? extends DBSEntityAttribute> attrs = complexType.getAttributes(monitor);
                 if (attrs != null) {
-                    Map<String, DBSAttributeBase> attrsByName = attrs.stream().collect(Collectors.toMap(
+                    Map<String, DBSEntityAttribute> attrsByName = attrs.stream().collect(Collectors.toMap(
                         a -> SQLUtils.identifierToCanonicalForm(dialect, a.getName(), false, true),
                         a -> a,
                         (a, b) -> a)
@@ -246,15 +278,50 @@ public abstract class SQLQueryExprType {
                 a.equals(b)
             );
     }
-    
+
+    private static class SQLQueryExprRowType extends SQLQueryExprType {
+        private final SQLQuerySymbolEntry reference;
+        private final SourceResolutionResult referencedSource;
+
+        public SQLQueryExprRowType(SQLQuerySymbolEntry reference, SourceResolutionResult referencedSource) {
+            super(reference.getDefinition(), DBPDataKind.ANY);
+            this.reference = reference;
+            this.referencedSource = referencedSource;
+        }
+
+        @NotNull
+        @Override
+        public String getDisplayName() {
+            return this.referencedSource.tableOrNull != null ? DBUtils.getObjectTypeName(this.referencedSource.tableOrNull) : this.reference.getName();
+        }
+
+        @Override
+        public @NotNull List<SQLQueryExprTypeMemberInfo> getNamedMembers(@NotNull DBRProgressMonitor monitor) throws DBException {
+            return this.referencedSource.source.getResultDataContext().getColumnsList().stream().map(
+                c -> new SQLQueryExprTypeMemberInfo(this, c.symbol.getName(), c.type, c.realAttr, c)
+            ).toList();
+        }
+
+        @Override
+        public SQLQueryExprType findNamedMemberType(@NotNull DBRProgressMonitor monitor, @NotNull String memberName) throws DBException {
+            SQLQueryResultColumn column = this.referencedSource.source.getResultDataContext().resolveColumn(monitor, memberName);
+            return column == null ? null : column.type;
+        }
+
+        @Override
+        public String toString() {
+            return "RowType[" + this.getDisplayName() + "]";
+        }
+    }
+
     private static class SQLQueryExprComplexType<T extends DBSEntity & DBSTypedObject> extends SQLQueryExprType {
         private final T complexType;
-        private final Map<String, DBSAttributeBase> attrs;
-        
+        private final Map<String, DBSEntityAttribute> attrs;
+
         public SQLQueryExprComplexType(
             @Nullable SQLQuerySymbolDefinition declaratorDefinition,
             @NotNull T complexType,
-            @NotNull Map<String, DBSAttributeBase> attrs
+            @NotNull Map<String, DBSEntityAttribute> attrs
         ) {
             super(declaratorDefinition, complexType);
             this.complexType = complexType;
@@ -266,10 +333,37 @@ public abstract class SQLQueryExprType {
         public String getDisplayName() {
             return this.complexType.getFullTypeName();
         }
-        
+
+        @Override
+        public @NotNull List<SQLQueryExprTypeMemberInfo> getNamedMembers(@NotNull DBRProgressMonitor monitor) throws DBException {
+            if (attrs != null) {
+                List<SQLQueryExprTypeMemberInfo> result = new ArrayList<>(attrs.size());
+                for (DBSEntityAttribute attr : this.attrs.values()) {
+                    result.add(new SQLQueryExprTypeMemberInfo(this, attr.getName(), forTypedObject(monitor, attr, SQLQuerySymbolClass.COMPOSITE_FIELD), attr, null));
+                }
+                return result;
+            } else {
+                return Collections.emptyList();
+            }
+        }
+
         @Override
         public SQLQueryExprType findNamedMemberType(@NotNull DBRProgressMonitor monitor, @NotNull String memberName) throws DBException {
             DBSAttributeBase attr = attrs.get(memberName);
+            SQLDialect dialect = this.complexType.getDataSource().getSQLDialect();
+            if (attr == null) {
+                String unquoted = dialect.getUnquotedIdentifier(memberName);
+                attr = this.complexType.getAttribute(monitor, unquoted);
+                if (attr == null) {
+                    // "some" database plugins "intentionally" doesn't implement data type's attribute lookup, so try to mimic its logic
+                    boolean isQuoted = DBUtils.isQuotedIdentifier(this.complexType.getDataSource(), memberName);
+                    if ((!isQuoted && dialect.storesUnquotedCase() == DBPIdentifierCase.MIXED) || dialect.useCaseInsensitiveNameLookup()) {
+                        attr = attrs.entrySet().stream()
+                            .filter(e -> e.getKey().equalsIgnoreCase(unquoted))
+                            .findFirst().map(Map.Entry::getValue).orElse(null);
+                    }
+                }
+            }
             return attr == null ? null : forTypedObject(monitor, attr, SQLQuerySymbolClass.COMPOSITE_FIELD);
         }
         
@@ -352,6 +446,12 @@ public abstract class SQLQueryExprType {
                 this.typeDesc.getIndexableItemType(depth, slicingSpec),
                 this.getDeclaratorDefinition()
             );
+        }
+
+        @NotNull
+        @Override
+        public String toString() {
+            return "DescribedIndexableType[" + this.typeDesc.getTypeName() + "]";
         }
     }
     

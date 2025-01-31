@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2024 DBeaver Corp and others
+ * Copyright (C) 2010-2025 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.swt.program.Program;
 import org.eclipse.ui.IEditorDescriptor;
@@ -33,21 +34,25 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.fs.DBFFileStoreProvider;
 import org.jkiss.dbeaver.model.fs.DBFUtils;
-import org.jkiss.dbeaver.model.navigator.DBNNode;
-import org.jkiss.dbeaver.model.navigator.DBNNodeWithResource;
-import org.jkiss.dbeaver.model.navigator.DBNResource;
+import org.jkiss.dbeaver.model.fs.nio.EFSNIOResource;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.ProgramInfo;
 import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.editors.file.FileTypeHandlerDescriptor;
+import org.jkiss.dbeaver.ui.editors.file.FileTypeHandlerRegistry;
+import org.jkiss.dbeaver.ui.editors.file.IFileTypeHandler;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.utils.ByteNumberFormat;
 import org.jkiss.utils.CommonUtils;
+import org.jkiss.utils.IOUtils;
 
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.Map;
 
 /**
  * Default resource handler
@@ -82,37 +87,33 @@ public class DefaultResourceHandlerImpl extends AbstractResourceHandler {
         return "";
     }
 
-    @NotNull
-    @Override
-    public DBNResource makeNavigatorNode(@NotNull DBNNode parentNode, @NotNull IResource resource) throws CoreException, DBException {
-        DBNResource node = super.makeNavigatorNode(parentNode, resource);
-        updateNavigatorNodeFromResource(node, resource);
-        return node;
-    }
-
-    @Override
-    public void updateNavigatorNodeFromResource(@NotNull DBNNodeWithResource node, @NotNull IResource resource) {
-        super.updateNavigatorNodeFromResource(node, resource);
-        String fileExtension = resource.getFileExtension();
-        if (!CommonUtils.isEmpty(fileExtension)) {
-            setNodeIconFromFileType(node, fileExtension);
-        }
-    }
-
-    public void setNodeIconFromFileType(@NotNull DBNNodeWithResource node, @NotNull String fileExt) {
-        ProgramInfo program = ProgramInfo.getProgram(fileExt);
-        if (program != null && program.getImage() != null) {
-            node.setResourceImage(program.getImage());
-        }
-    }
-
     @Override
     public void openResource(@NotNull IResource resource) throws CoreException, DBException {
+        IPath location = resource instanceof EFSNIOResource ? null : resource.getLocation();
+        if (location != null) {
+            // Try to open using file handler
+            Path path = location.toPath();
+            if (Files.exists(path)) {
+                String fileExtension = IOUtils.getFileExtension(path);
+                if (!CommonUtils.isEmpty(fileExtension)) {
+                    FileTypeHandlerDescriptor fthd = FileTypeHandlerRegistry.getInstance().findHandler(fileExtension);
+                    if (fthd != null) {
+                        try {
+                            IFileTypeHandler handler = fthd.createHandler();
+                            handler.openFiles(Collections.singletonList(path), Map.of(), null);
+                            return;
+                        } catch (Exception e) {
+                            // ignore
+                        }
+                    }
+                }
+            }
+        }
         if (resource instanceof DBFFileStoreProvider) {
             IFileStore fileStore = ((DBFFileStoreProvider) resource).getFileStore();
             long length = fileStore.fetchInfo().getLength();
-            if (!UIUtils.confirmAction(null, "Open resource '" + resource.getFullPath() +
-                "'?\nSize = " + ByteNumberFormat.getInstance().format(length))) {
+            if (!UIUtils.confirmAction(resource.getFullPath().toString(), "Open remote resource '" + resource.getFullPath() +
+                "'?\nSize = " + ByteNumberFormat.getInstance().format(length) + " bytes")) {
                 return;
             }
 
@@ -169,7 +170,7 @@ public class DefaultResourceHandlerImpl extends AbstractResourceHandler {
         } else if (resource instanceof IFile) {
             IDE.openEditor(UIUtils.getActiveWorkbenchWindow().getActivePage(), (IFile) resource);
         } else if (resource instanceof IFolder) {
-            DBWorkbench.getPlatformUI().executeShellProgram(resource.getLocation().toOSString());
+            DBWorkbench.getPlatformUI().executeShellProgram(location.toOSString());
         }
     }
 

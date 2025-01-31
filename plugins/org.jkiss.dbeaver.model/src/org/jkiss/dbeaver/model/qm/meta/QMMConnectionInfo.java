@@ -112,6 +112,7 @@ public class QMMConnectionInfo extends QMMObject {
     {
         if (transaction != null) {
             transaction.rollback(null);
+            transaction = null;
         }
         for (QMMStatementInfo stat = statementStack; stat != null; stat = stat.getPrevious()) {
             if (!stat.isClosed()) {
@@ -121,6 +122,7 @@ public class QMMConnectionInfo extends QMMObject {
                 stat.close();
             }
         }
+        statementStack = null;
         super.close();
     }
 
@@ -200,7 +202,9 @@ public class QMMConnectionInfo extends QMMObject {
                 return stat;
             }
         }
-        log.warn("Statement " + statement + " meta info not found");
+        if (statementStack != null) {
+            log.warn("Closed statement " + statement + " meta info not found");
+        }
         return null;
     }
 
@@ -235,12 +239,23 @@ public class QMMConnectionInfo extends QMMObject {
                 isTransactional() && getTransaction() != null ?
                     getTransaction().getCurrentSavepoint() : null;
             var sqlDialect = statement.getSession().getDataSource().getSQLDialect();
+            String schema = null;
+            String catalog = null;
+            DBCExecutionContextDefaults contextDefaults = statement.getSession().getExecutionContext().getContextDefaults();
+            if (contextDefaults != null) {
+                DBCCachedContextDefaults cachedDefault = contextDefaults.getCachedDefault();
+                schema = cachedDefault.schemaName();
+                catalog = cachedDefault.catalogName();
+            }
             return this.executionStack = new QMMStatementExecuteInfo(
                 stat,
                 savepoint,
                 queryString,
                 this.executionStack,
-                sqlDialect);
+                sqlDialect,
+                schema,
+                catalog
+            );
         } else {
             return null;
         }

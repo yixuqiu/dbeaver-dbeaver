@@ -1,4 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ DBeaver - Universal Database Manager
+  ~ Copyright (C) 2010-2025 DBeaver Corp and others
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
 <project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
          xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -17,12 +33,14 @@
         <module>org.jkiss.dbeaver.model</module>
         <module>org.jkiss.dbeaver.model.ai</module>
         <module>org.jkiss.dbeaver.model.event</module>
+        <module>org.jkiss.dbeaver.model.dashboard</module>
         <module>org.jkiss.dbeaver.model.jdbc</module>
+        <module>org.jkiss.dbeaver.model.lsm</module>
         <module>org.jkiss.dbeaver.model.nio</module>
+        <module>org.jkiss.dbeaver.model.rcp</module>
         <module>org.jkiss.dbeaver.model.sm</module>
         <module>org.jkiss.dbeaver.model.sql</module>
-        <module>org.jkiss.dbeaver.model.lsm</module>
-        <module>org.jkiss.dbeaver.model.dashboard</module>
+        <module>org.jkiss.dbeaver.model.sql.jdbc</module>
         <module>org.jkiss.dbeaver.registry</module>
         <module>org.jkiss.dbeaver.dpi.app</module>
         <module>org.jkiss.dbeaver.dpi.model</module>
@@ -32,10 +50,12 @@
 
         <module>org.jkiss.dbeaver.ext.generic</module>
 
+
         <module>org.jkiss.dbeaver.ext.athena</module>
         <module>org.jkiss.dbeaver.ext.bigquery</module>
         <module>org.jkiss.dbeaver.ext.clickhouse</module>
         <module>org.jkiss.dbeaver.ext.cubrid</module>
+        <module>org.jkiss.dbeaver.ext.databend</module>
         <module>org.jkiss.dbeaver.ext.databricks</module>
         <module>org.jkiss.dbeaver.ext.db2</module>
         <module>org.jkiss.dbeaver.ext.db2.zos</module>
@@ -46,6 +66,7 @@
         <module>org.jkiss.dbeaver.ext.es</module>
         <module>org.jkiss.dbeaver.ext.exasol</module>
         <module>org.jkiss.dbeaver.ext.firebird</module>
+        <module>org.jkiss.dbeaver.ext.gbase8s</module>
         <module>org.jkiss.dbeaver.ext.greenplum</module>
         <module>org.jkiss.dbeaver.ext.h2</module>
         <module>org.jkiss.dbeaver.ext.h2gis</module>
@@ -63,7 +84,7 @@
 
         <module>org.jkiss.dbeaver.ext.postgresql</module>
 
-        <module>org.jkiss.dbeaver.ext.snowflake.core</module>
+        <module>org.jkiss.dbeaver.ext.snowflake</module>
         <module>org.jkiss.dbeaver.ext.spanner</module>
         <module>org.jkiss.dbeaver.ext.sqlite</module>
         <module>org.jkiss.dbeaver.ext.vertica</module>
@@ -74,19 +95,23 @@
         <module>org.jkiss.dbeaver.ext.datavirtuality</module>
         <module>org.jkiss.dbeaver.ext.denodo</module>
         <module>org.jkiss.dbeaver.ext.altibase</module>
-
+        <module>org.jkiss.dbeaver.ext.gaussdb</module>
+        
         <module>org.jkiss.dbeaver.tasks.native</module>
 
         <module>org.jkiss.dbeaver.data.office</module>
         <module>org.jkiss.dbeaver.data.transfer</module>
         <module>org.jkiss.dbeaver.data.gis</module>
+
+        <module>org.jkiss.dbeaver.debug.core</module>
+
         <module>org.jkiss.dbeaver.net.ssh</module>
         <module>org.jkiss.dbeaver.net.ssh.jsch</module>
         <module>org.jkiss.dbeaver.net.ssh.sshj</module>
         <module>org.jkiss.dbeaver.slf4j</module>
-        <module>org.jkiss.dbeaver.team.git</module>
 
         <module>org.jkiss.dbeaver.headless</module>
+        <module>org.jkiss.dbeaver.osgi.test.runner</module>
     </modules>
 
     <profiles>
@@ -104,7 +129,9 @@
                 <module>org.jkiss.dbeaver.ext.athena.ui</module>
                 <module>org.jkiss.dbeaver.ext.bigquery.ui</module>
                 <module>org.jkiss.dbeaver.ext.clickhouse.ui</module>
+                <module>org.jkiss.dbeaver.ext.cubrid.ui</module>
                 <module>org.jkiss.dbeaver.ext.dameng.ui</module>
+                <module>org.jkiss.dbeaver.ext.databend.ui</module>
                 <module>org.jkiss.dbeaver.ext.exasol.ui</module>
                 <module>org.jkiss.dbeaver.ext.db2.ui</module>
 
@@ -131,7 +158,6 @@
                 <module>org.jkiss.dbeaver.ui.editors.acl</module>
                 <module>org.jkiss.dbeaver.ui.editors.base</module>
                 <module>org.jkiss.dbeaver.ui.editors.connection</module>
-                <module>org.jkiss.dbeaver.ui.editors.content</module>
                 <module>org.jkiss.dbeaver.ui.editors.data</module>
                 <module>org.jkiss.dbeaver.ui.editors.entity</module>
                 <module>org.jkiss.dbeaver.ui.editors.hex</module>
@@ -148,6 +174,10 @@
                 <module>org.jkiss.dbeaver.ui.search</module>
                 <module>org.jkiss.dbeaver.ui.statistics</module>
 
+                <module>org.jkiss.dbeaver.ui.swt.linux</module>
+                <module>org.jkiss.dbeaver.ui.swt.macos</module>
+                <module>org.jkiss.dbeaver.ui.swt.windows</module>
+
                 <module>org.jkiss.dbeaver.erd.ui</module>
                 <module>org.jkiss.dbeaver.tasks.native.ui</module>
                 <module>org.jkiss.dbeaver.tasks.ui</module>
@@ -157,20 +187,22 @@
                 <module>org.jkiss.dbeaver.data.office.ui</module>
                 <module>org.jkiss.dbeaver.ext.sample.database</module>
                 <module>org.jkiss.dbeaver.ext.ui.locks</module>
-                <module>org.jkiss.dbeaver.ext.ui.svg</module>
                 <module>org.jkiss.dbeaver.ext.ui.tipoftheday</module>
-                <module>org.jkiss.dbeaver.ext.import_config</module>
+                <module>org.jkiss.dbeaver.ext.config.migration</module>
                 <module>org.jkiss.dbeaver.ext.format.sqlworkbenchj</module>
                 <module>org.jkiss.dbeaver.cmp.simple.ui</module>
 
-                <module>org.jkiss.dbeaver.debug.core</module>
                 <module>org.jkiss.dbeaver.debug.ui</module>
 
                 <module>org.jkiss.dbeaver.data.transfer.ui</module>
                 <module>org.jkiss.dbeaver.data.gis.view</module>
                 <module>org.jkiss.dbeaver.net.ssh.ui</module>
+                
+                <module>org.jkiss.dbeaver.ext.gaussdb.ui</module>
 
                 <module>org.jkiss.dbeaver.team.git.ui</module>
+
+                <module>org.jkiss.dbeaver.ext.test</module>
             </modules>
         </profile>
     </profiles>

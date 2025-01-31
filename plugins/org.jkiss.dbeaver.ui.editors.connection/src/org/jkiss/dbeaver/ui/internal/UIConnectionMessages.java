@@ -17,7 +17,7 @@
  */
 package org.jkiss.dbeaver.ui.internal;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class UIConnectionMessages extends NLS {
 
@@ -26,6 +26,7 @@ public class UIConnectionMessages extends NLS {
     public static String dialog_connection_edit_wizard_conn_conf_general_link;
     public static String dialog_connection_edit_wizard_conn_conf_network_link;
     public static String dialog_connection_edit_connection_settings_variables_hint_label;
+    public static String dialog_connection_database_documentation;
     public static String dialog_connection_advanced_settings;
     public static String dialog_connection_env_variables_hint;
 
@@ -58,6 +59,7 @@ public class UIConnectionMessages extends NLS {
 
     public static String dialog_setting_ssl_configurator_label_optional;
     public static String dialog_setting_ssl_configurator_label_description;
+    public static String dialog_setting_ssl_configurator_label_note;
     public static String dialog_setting_ssl_configurator_legend_parameters;
     public static String dialog_setting_ssl_configurator_method;
     public static String dialog_setting_ssl_configurator_method_certs;

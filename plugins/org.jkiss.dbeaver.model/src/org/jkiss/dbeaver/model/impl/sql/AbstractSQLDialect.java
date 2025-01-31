@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.model.impl.sql;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.data.DBDBinaryFormatter;
@@ -40,6 +41,8 @@ import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.Pair;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
  * Abstract SQL Dialect
@@ -62,14 +65,6 @@ public abstract class AbstractSQLDialect implements SQLDialect {
     public static final String[] DML_KEYWORDS = new String[0];
     public static final Pair<String, String> IN_CLAUSE_PARENTHESES = new Pair<>("(", ")");
 
-    protected static final SQLBlockCompletions DEFAULT_SQL_BLOCK_COMPLETIONS = new SQLBlockCompletionsCollection() {{
-        registerCompletionPair("BEGIN", "END");
-        registerCompletionPair("CASE", "END");
-        registerCompletionPair("LOOP", "END", "LOOP");
-        registerCompletionInfo("IF", new String[] { " THEN", SQLBlockCompletions.NEW_LINE_COMPLETION_PART,
-            SQLBlockCompletions.ONE_INDENT_COMPLETION_PART, SQLBlockCompletions.NEW_LINE_COMPLETION_PART, "END IF", SQLBlockCompletions.NEW_LINE_COMPLETION_PART
-        }, "END", "IF");   
-    }};
     public static final Locale DEF_LOCALE = Locale.ENGLISH;
 
     private static class KeywordHolder {
@@ -84,11 +79,12 @@ public abstract class AbstractSQLDialect implements SQLDialect {
     // Keywords
     private final TreeMap<String, KeywordHolder> allKeywords = new TreeMap<>();
 
-    private final TreeMap<String, String> reservedWords = new TreeMap<>();
-    private final TreeMap<String, String> functions = new TreeMap<>();
-    private final TreeMap<String, String> types = new TreeMap<>();
-    private final TreeMap<String, String> tableQueryWords = new TreeMap<>();
-    private final TreeMap<String, String> columnQueryWords = new TreeMap<>();
+    // avoiding ConcurrentModificationException (CB-5521)
+    private final ConcurrentNavigableMap<String, String> reservedWords = new ConcurrentSkipListMap<>();
+    private final ConcurrentNavigableMap<String, String> functions = new ConcurrentSkipListMap<>();
+    private final ConcurrentNavigableMap<String, String> types = new ConcurrentSkipListMap<>();
+    private final ConcurrentNavigableMap<String, String> tableQueryWords = new ConcurrentSkipListMap<>();
+    private final ConcurrentNavigableMap<String, String> columnQueryWords = new ConcurrentSkipListMap<>();
     // Comments
     private final Pair<String, String> multiLineComments = new Pair<>(SQLConstants.ML_COMMENT_START, SQLConstants.ML_COMMENT_END);
     private final Map<String, Integer> keywordsIndent = new HashMap<>();
@@ -98,7 +94,7 @@ public abstract class AbstractSQLDialect implements SQLDialect {
 
     @NotNull
     @Override
-    public SQLDialectQueryGenerator getQueryGenerator() {
+    public SQLQueryGenerator getQueryGenerator() {
         return StandardSQLDialectQueryGenerator.INSTANCE;
     }
 
@@ -584,8 +580,14 @@ public abstract class AbstractSQLDialect implements SQLDialect {
         return MultiValueInsertMode.NOT_SUPPORTED;
     }
 
+    @NotNull
     @Override
-    public String addFiltersToQuery(DBRProgressMonitor monitor, DBPDataSource dataSource, String query, DBDDataFilter filter) {
+    public String addFiltersToQuery(
+        @Nullable DBRProgressMonitor monitor,
+        @NotNull DBPDataSource dataSource,
+        @NotNull String query,
+        @NotNull DBDDataFilter filter
+    ) throws DBException {
         return getQueryGenerator().getQueryWithAppliedFilters(monitor, dataSource, query, filter);
     }
 
@@ -597,6 +599,11 @@ public abstract class AbstractSQLDialect implements SQLDialect {
     @Override
     public boolean supportsAliasInSelect() {
         return false;
+    }
+
+    @Override
+    public boolean supportsAsKeywordBeforeAliasInFromClause() {
+        return true;
     }
 
     @Override
@@ -1006,14 +1013,15 @@ public abstract class AbstractSQLDialect implements SQLDialect {
     }
 
     @Override
+    public boolean isEscapeBackslash() {
+        return false;
+    }
+
+    @Override
     public boolean hasCaseSensitiveFiltration() {
         return false;
     }
-    
-    @Override
-    public SQLBlockCompletions getBlockCompletions() {
-        return DEFAULT_SQL_BLOCK_COMPLETIONS;
-    }
+
 }
 
 

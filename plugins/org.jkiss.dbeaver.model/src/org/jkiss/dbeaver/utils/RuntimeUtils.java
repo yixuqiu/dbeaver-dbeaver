@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.utils;
 
 import org.eclipse.core.internal.runtime.Activator;
 import org.eclipse.core.internal.runtime.CommonMessages;
+import org.eclipse.core.internal.runtime.InternalPlatform;
 import org.eclipse.core.runtime.*;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.core.runtime.jobs.JobGroup;
@@ -35,10 +36,7 @@ import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.BeanUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.StandardConstants;
-import org.osgi.framework.Bundle;
-import org.osgi.framework.BundleContext;
-import org.osgi.framework.FrameworkUtil;
-import org.osgi.framework.ServiceReference;
+import org.osgi.framework.*;
 
 import java.io.*;
 import java.lang.reflect.Field;
@@ -46,6 +44,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.*;
+import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.*;
@@ -117,6 +116,10 @@ public final class RuntimeUtils {
 
     public static String getCurrentDate() {
         return new SimpleDateFormat(GeneralUtils.DEFAULT_DATE_PATTERN, Locale.ENGLISH).format(new Date()); //$NON-NLS-1$
+    }
+
+    public static String getCurrentTime() {
+        return new SimpleDateFormat(GeneralUtils.DEFAULT_TIME_PATTERN, Locale.ENGLISH).format(new Date()); //$NON-NLS-1$
     }
 
     public static String getCurrentTimeStamp() {
@@ -195,10 +198,10 @@ public final class RuntimeUtils {
             return String.format("%dh %dm %ds", hours, minutes, seconds);
         } else if (minutes > 0) {
             return String.format("%dm %ds", minutes, seconds);
-        } else if (seconds > 0) {
+        } else if (seconds >= 10) {
             return String.format("%ds", seconds);
         } else {
-            return String.format("%.03fs", millis / 1000.0);
+            return String.format("%d.%03ds", seconds, millis);
         }
     }
 
@@ -418,12 +421,28 @@ public final class RuntimeUtils {
     }
 
     /**
-     * Determine OS Sonoma
-     * 
-     * @return - true if Os Sonoma, version 14.x
+     * Retrieves version of the operating system.
+     *
+     * @return version of the operating system, or {@link Version#emptyVersion} if the version is unknown
+     * @see #isOSVersionAtLeast(int, int, int)
      */
-    public static boolean isMacOsSomona() {
-        return isMacOS() && System.getProperty("os.version").startsWith("14");
+    @NotNull
+    public static Version getOSVersion() {
+        String version = System.getProperty("os.version");
+        if (version != null) {
+            try {
+                return new Version(version);
+            } catch (IllegalArgumentException e) {
+                log.debug("Error parsing OS version: " + version, e);
+            }
+        }
+        return Version.emptyVersion;
+    }
+
+    public static boolean isOSVersionAtLeast(int major, int minor, int micro) {
+        Version expected = new Version(major, minor, micro);
+        Version actual = getOSVersion();
+        return actual.compareTo(expected) >= 0;
     }
 
     public static void setThreadName(String name) {
@@ -439,7 +458,7 @@ public final class RuntimeUtils {
                 ni = niEnum.nextElement();
             }
         }
-        return ni == null ? NULL_MAC_ADDRESS : ni.getHardwareAddress();
+        return ni == null || ni.getHardwareAddress() == null ? NULL_MAC_ADDRESS : ni.getHardwareAddress();
     }
 
     @NotNull
@@ -700,6 +719,11 @@ public final class RuntimeUtils {
                 }
             }
         }
+    }
+
+    // Returns plugin state folder and do not create it (as default Eclipse function does)
+    public static Path getPluginStateLocation(Plugin plugin) {
+        return InternalPlatform.getDefault().getStateLocation(plugin.getBundle(), false).toPath();
     }
 
     private enum CommandLineState {

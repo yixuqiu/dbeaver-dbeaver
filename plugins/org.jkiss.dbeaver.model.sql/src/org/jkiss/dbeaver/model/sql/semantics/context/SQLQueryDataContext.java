@@ -21,20 +21,22 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.semantics.SQLQuerySymbol;
-import org.jkiss.dbeaver.model.sql.semantics.model.SQLQueryRowsCorrelatedSourceModel;
-import org.jkiss.dbeaver.model.sql.semantics.model.SQLQueryRowsSourceModel;
-import org.jkiss.dbeaver.model.stm.STMTreeNode;
+import org.jkiss.dbeaver.model.sql.semantics.model.select.SQLQueryRowsCorrelatedSourceModel;
+import org.jkiss.dbeaver.model.sql.semantics.model.select.SQLQueryRowsSourceModel;
+import org.jkiss.dbeaver.model.stm.STMUtils;
 import org.jkiss.dbeaver.model.struct.DBSEntity;
+import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.DBSObjectType;
+import org.jkiss.utils.Pair;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Semantic context query information about entities involved in the semantics model
  */
 public abstract class SQLQueryDataContext {
+
+    private KnownSourcesInfo knownSources = null;
 
     /**
      * Get columns of the query result tuple
@@ -43,10 +45,31 @@ public abstract class SQLQueryDataContext {
     public abstract List<SQLQueryResultColumn> getColumnsList();
 
     /**
+     * Returns flag demonstrating whether all the rows' sources were correctly resolved or not
+     */
+    public abstract boolean hasUnresolvedSource();
+
+    /**
+     * Get pseudo columns of the query result tuple
+     */
+    @NotNull
+    public abstract List<SQLQueryResultPseudoColumn> getPseudoColumnsList();
+
+    /**
      * Find real table referenced by its name in the database
      */
     @Nullable
     public abstract DBSEntity findRealTable(@NotNull DBRProgressMonitor monitor, @NotNull List<String> tableName);
+
+    /**
+     * Find real object of given type referenced by its name in the database
+     */
+    @Nullable
+    public abstract DBSObject findRealObject(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBSObjectType objectType,
+        @NotNull List<String> objectName
+    );
 
     /**
      * Find column referenced by its name in the result tuple
@@ -55,6 +78,22 @@ public abstract class SQLQueryDataContext {
      */
     @Nullable
     public abstract SQLQueryResultColumn resolveColumn(@NotNull DBRProgressMonitor monitor, @NotNull String simpleName);
+
+    /**
+     * Find pseudo column referenced by its name in the result tuple
+     *
+     * @implNote TODO consider ambiguous column names
+     */
+    @Nullable
+    public abstract SQLQueryResultPseudoColumn resolvePseudoColumn(@NotNull DBRProgressMonitor monitor, @NotNull String name);
+
+    /**
+     * Find global pseudo column referenced by its name in the result tuple
+     *
+     * @implNote TODO consider ambiguous column names
+     */
+    @Nullable
+    public abstract SQLQueryResultPseudoColumn resolveGlobalPseudoColumn(@NotNull DBRProgressMonitor monitor, @NotNull String name);
 
     /**
      * Find semantic model item responsible for the representation of the data rows source having a given name
@@ -79,16 +118,41 @@ public abstract class SQLQueryDataContext {
      * Prepare new semantic context by overriding result tuple columns information
      */
     @NotNull
-    public final SQLQueryDataContext overrideResultTuple(@NotNull List<SQLQueryResultColumn> columns) {
-        return new SQLQueryResultTupleContext(this, columns);
+    public final SQLQueryDataContext overrideResultTuple(
+        @Nullable SQLQueryRowsSourceModel source,
+        @NotNull List<SQLQueryResultColumn> columns,
+        @NotNull List<SQLQueryResultPseudoColumn> pseudoColumns
+    ) {
+        // TODO: review pseudoattributes behavior in DDL expressions (not handling for now)
+        List<SQLQueryResultPseudoColumn> allPseudoColumns = source == null
+            ? pseudoColumns
+            : STMUtils.combineLists(this.prepareRowsetPseudoColumns(source), pseudoColumns);
+        return new SQLQueryResultTupleContext(this, columns, allPseudoColumns);
     }
+
+    @NotNull
+    public final SQLQueryDataContext overrideResultTuple(
+        @Nullable SQLQueryRowsSourceModel source,
+        @NotNull Pair<List<SQLQueryResultColumn>, List<SQLQueryResultPseudoColumn>> columnsAndPseudoColumns
+    ) {
+        return this.overrideResultTuple(source, columnsAndPseudoColumns.getFirst(), columnsAndPseudoColumns.getSecond());
+    }
+
 
     /**
      * Prepare new semantic context by combining this context with the other given context
      */
     @NotNull
     public final SQLQueryDataContext combine(@NotNull SQLQueryDataContext other) {
-        return new SQLQueryCombinedContext(this, other);
+        return new SQLQueryCombinedContext(this, other, false);
+    }
+
+    /**
+     * Prepare new semantic context by combining this context with the other given context
+     */
+    @NotNull
+    public final SQLQueryDataContext combineForJoin(@NotNull SQLQueryDataContext other) {
+        return new SQLQueryCombinedContext(this, other, true);
     }
 
     /**
@@ -116,54 +180,78 @@ public abstract class SQLQueryDataContext {
     }
 
     /**
+     * Prepare new semantic context by introducing hasUnresolvedSource flag
+     */
+    public final SQLQueryDataContext markHasUnresolvedSource() {
+        return new SQLQueryWithUndresolvedSourceRowsContext(this);
+    }
+
+    /**
      * Get SQL dialect used adjust identifiers during semantics resolution
      */
     @NotNull
     public abstract SQLDialect getDialect();
 
     /**
-     * Get fake table rows source used to represent invalid query fragments when the adequate semantic model item cannot be constructed
-     */
-    @NotNull
-    public abstract SQLQueryRowsSourceModel getDefaultTable(@NotNull STMTreeNode syntaxNode);
-
-    /**
      * Representation of the information about rows sources involved in semantic model
      */
-    public class KnownSourcesInfo {
+    public static class KnownSourcesInfo {
         @NotNull
-        private final Map<SQLQueryRowsSourceModel, SourceResolutionResult> sources = new HashMap<>();
+        private final Map<SQLQueryRowsSourceModel, SourceResolutionResult> sources = new LinkedHashMap<>();
+        @NotNull
+        private final Set<DBSObject> referencedTables = new LinkedHashSet<>();
+        @NotNull
+        private final Set<String> aliasesInUse = new HashSet<>();
+
+        private final Map<SQLQueryRowsSourceModel, SourceResolutionResult> sourcesView = Collections.unmodifiableMap(sources);
+        private final Set<DBSObject> referencedTablesView = Collections.unmodifiableSet(this.referencedTables);
+        private final Set<String> aliasesInUseView = Collections.unmodifiableSet(this.aliasesInUse);
 
         public void registerTableReference(@NotNull SQLQueryRowsSourceModel source, @NotNull DBSEntity table) {
-            if (source instanceof SQLQueryRowsCorrelatedSourceModel cc && cc.getCorrelationColumNames().isEmpty()) {
-                source = cc.getSource();
-            }
-            SQLQueryRowsSourceModel ssource = source;
-            this.sources.compute(source, (k, v) -> v == null ? SourceResolutionResult.forRealTableByName(ssource, table) : SourceResolutionResult.withRealTable(v, table));
+            SQLQueryRowsSourceModel sourceModel = source instanceof SQLQueryRowsCorrelatedSourceModel cc && cc.getCorrelationColumNames().isEmpty()
+                ? cc.getSource() : source;
+            this.sources.compute(sourceModel, (k, v) -> v == null
+                ? SourceResolutionResult.forRealTableByName(sourceModel, table) : SourceResolutionResult.withRealTable(v, table));
+            this.referencedTables.add(table);
         }
 
         public void registerAlias(@NotNull SQLQueryRowsSourceModel source, @NotNull SQLQuerySymbol alias) {
-            if (source instanceof SQLQueryRowsCorrelatedSourceModel cc && cc.getCorrelationColumNames().isEmpty()) {
-                source = cc.getSource();
-            }
-            SQLQueryRowsSourceModel ssource = source;
-            this.sources.compute(source, (k, v) -> v == null ? SourceResolutionResult.forSourceByAlias(ssource, alias) : SourceResolutionResult.withAlias(v, alias));
+            SQLQueryRowsSourceModel sourceModel = source instanceof SQLQueryRowsCorrelatedSourceModel cc && cc.getCorrelationColumNames().isEmpty()
+                ? cc.getSource() : source;
+            this.sources.compute(sourceModel, (k, v) -> v == null
+                ? SourceResolutionResult.forSourceByAlias(sourceModel, alias) : SourceResolutionResult.withAlias(v, alias));
+            this.aliasesInUse.add(alias.getName());
         }
 
         @NotNull
         public Map<SQLQueryRowsSourceModel, SourceResolutionResult> getResolutionResults() {
-            return Collections.unmodifiableMap(this.sources);
+            return this.sourcesView;
+        }
+
+        @NotNull
+        public Set<DBSObject> getReferencedTables() {
+            return this.referencedTablesView;
+        }
+
+        @NotNull
+        public Set<String> getAliasesInUse() {
+            return this.aliasesInUseView;
         }
     }
 
     /**
      * Aggregate information about all the rows sources involved in this semantic context
      */
-    public KnownSourcesInfo collectKnownSources() {
-        KnownSourcesInfo result = new KnownSourcesInfo();
-        this.collectKnownSourcesImpl(result);
-        return result;
+    public KnownSourcesInfo getKnownSources() {
+        if (this.knownSources == null) {
+            KnownSourcesInfo result = new KnownSourcesInfo();
+            this.collectKnownSourcesImpl(result);
+            this.knownSources = result;
+        }
+        return this.knownSources;
     }
     
     protected abstract void collectKnownSourcesImpl(@NotNull KnownSourcesInfo result);
+
+    protected abstract List<SQLQueryResultPseudoColumn> prepareRowsetPseudoColumns(@NotNull SQLQueryRowsSourceModel source);
 }

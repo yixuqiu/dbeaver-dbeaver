@@ -32,6 +32,7 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPContextProvider;
 import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableWithResult;
@@ -105,8 +106,11 @@ public class DataTransferWizard extends TaskConfigurationWizard<DataTransferSett
                         }
                     }
 
-                    if (databaseObject instanceof DBPContextProvider) {
-                        saveTaskContext(((DBPContextProvider) databaseObject).getExecutionContext());
+                    if (databaseObject instanceof DBPContextProvider contextProvider) {
+                        DBCExecutionContext executionContext = contextProvider.getExecutionContext();
+                        if (executionContext != null) {
+                            saveTaskContext(executionContext);
+                        }
                     }
                 }
             }
@@ -140,6 +144,17 @@ public class DataTransferWizard extends TaskConfigurationWizard<DataTransferSett
                     status.getMessage(), status);
             }
         }
+    }
+
+    @Override
+    public boolean canFinish() {
+        if (settings.getProcessor() != null && CommonUtils.isEmpty(settings.getProcessorProperties())) {
+            // Assumes all processors have at least one property - which is true.
+            // When changing processors, the new one doesn't have any properties
+            // and must be configured by the user by going through the wizard once again.
+            return false;
+        }
+        return super.canFinish();
     }
 
     void loadSettings() {
@@ -615,7 +630,14 @@ public class DataTransferWizard extends TaskConfigurationWizard<DataTransferSett
         @Override
         protected void runTask() throws DBException {
             DTTaskHandlerTransfer handlerTransfer = new DTTaskHandlerTransfer();
-            handlerTransfer.executeWithSettings(this, getCurrentTask(), Locale.getDefault(), log, this, settings);
+            handlerTransfer.executeWithSettings(
+                this,
+                getCurrentTask(),
+                Locale.getDefault(),
+                log,
+                null,
+                this,
+                settings);
         }
 
     }

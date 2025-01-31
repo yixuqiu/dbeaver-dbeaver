@@ -79,6 +79,11 @@ public interface DBPDriverLibrary {
 
     boolean isOptional();
 
+    /**
+     * Flag that show if library is provided with an application.
+     */
+    boolean isEmbedded();
+
     boolean isCustom();
 
     boolean isDisabled();
@@ -112,4 +117,5 @@ public interface DBPDriverLibrary {
 
     boolean isSecureDownload(@NotNull DBRProgressMonitor monitor);
 
+    boolean isInvalidLibrary();
 }

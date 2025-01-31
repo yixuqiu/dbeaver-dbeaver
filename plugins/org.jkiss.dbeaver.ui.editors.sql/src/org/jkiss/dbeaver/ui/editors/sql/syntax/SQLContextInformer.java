@@ -128,7 +128,7 @@ public class SQLContextInformer
         SQLWordPartDetector wordDetector = new SQLWordPartDetector(document, syntaxManager, region.getOffset());
         wordRegion = wordDetector.extractIdentifier(document, region, editor.getRuleManager());
 
-        if (wordRegion.word.length() == 0) {
+        if (wordRegion.word.isEmpty()) {
             return;
         }
 
@@ -193,7 +193,7 @@ public class SQLContextInformer
             tlc = new ObjectLookupCache();
             contextCache.put(fullName, tlc);
 
-            DBSStructureAssistant structureAssistant = DBUtils.getAdapter(DBSStructureAssistant.class, editor.getDataSource());
+            DBSStructureAssistant<?> structureAssistant = DBUtils.getAdapter(DBSStructureAssistant.class, editor.getDataSource());
             TablesFinderJob job = new TablesFinderJob(executionContext, structureAssistant, containerNames, tableName, caseSensitive, tlc);
             job.schedule();
         }
@@ -296,7 +296,6 @@ public class SQLContextInformer
             return Status.OK_STATUS;
         }
 
-        @Nullable
         private boolean findTables(DBRProgressMonitor monitor) throws DBException {
             monitor.beginTask("Read metadata information", 1);
             cache.references = new ArrayList<>();
@@ -306,9 +305,12 @@ public class SQLContextInformer
                 if (!ArrayUtils.isEmpty(containerNames)) {
                     DBSObjectContainer dsContainer = DBUtils.getAdapter(DBSObjectContainer.class, getExecutionContext().getDataSource());
                     if (dsContainer != null) {
-                        DBCExecutionContextDefaults contextDefaults = getExecutionContext().getContextDefaults();
+                        DBCExecutionContextDefaults<?,?> contextDefaults = getExecutionContext().getContextDefaults();
 
                         DBSObject childContainer = dsContainer.getChild(monitor, containerNames[0]);
+                        if (!DBStructUtils.isConnectedContainer(childContainer)) {
+                            childContainer = null;
+                        }
                         if (childContainer == null) {
                              if (contextDefaults != null) {
                                  if (contextDefaults.getDefaultCatalog() != null) {
@@ -316,8 +318,8 @@ public class SQLContextInformer
                                  }
                              }
                         }
-                        if (childContainer instanceof DBSObjectContainer) {
-                            container = (DBSObjectContainer) childContainer;
+                        if (childContainer instanceof DBSObjectContainer objectContainer) {
+                            container = objectContainer;
                         } else {
                             // Check in selected object
                             if (childContainer == null && structureAssistant != null) {
@@ -383,7 +385,7 @@ public class SQLContextInformer
                 } else if (structureAssistant != null) {
                     DBSObjectType[] objectTypes = structureAssistant.getHyperlinkObjectTypes();
                     DBCExecutionContext executionContext = editor.getExecutionContext();
-                    if (executionContext != null) {
+                    if (executionContext != null && executionContext.getDataSource().getContainer().isExtraMetadataReadEnabled()) {
                         DBSStructureAssistant.ObjectsSearchParams params = new DBSStructureAssistant.ObjectsSearchParams(objectTypes, objectName);
                         params.setParentObject(container);
                         params.setCaseSensitive(caseSensitive);
