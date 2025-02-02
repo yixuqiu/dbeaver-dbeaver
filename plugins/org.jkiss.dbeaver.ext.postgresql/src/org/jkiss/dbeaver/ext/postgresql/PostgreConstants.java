@@ -17,6 +17,7 @@
 
 package org.jkiss.dbeaver.ext.postgresql;
 
+import org.jkiss.dbeaver.ext.postgresql.internal.PostgreSQLMessages;
 import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttribute;
@@ -93,8 +94,15 @@ public class PostgreConstants {
     // Workaround for EnterpriseDB
     public static final String EDB_OBJECT_CLASS = "com.edb.util.PGobject";
 
-    public static final DBDPseudoAttribute PSEUDO_ATTR_OID = new DBDPseudoAttribute(DBDPseudoAttributeType.ROWID, "oid",
-        "oid", "oid", "Row identifier", false);
+    public static final DBDPseudoAttribute PSEUDO_ATTR_OID = new DBDPseudoAttribute(
+        DBDPseudoAttributeType.ROWID,
+        "oid",
+        "oid",
+        "oid",
+        PostgreSQLMessages.pseudo_column_oid_description,
+        false,
+        DBDPseudoAttribute.PropagationPolicy.TABLE_LOCAL
+    );
 
     public static final String TYPE_CHAR = "char";
     public static final String TYPE_TEXT = "text";
@@ -155,8 +163,10 @@ public class PostgreConstants {
     public static final String COLLATION_DEFAULT = "default";
     public static final String DEFAULT_ARRAY_DELIMITER = " ";
     public static final String PG_PASS_HOSTNAME = "overriddenUsername";
-    public static final String LEGACY_UA_TIMEZONE = "Europe/Kiev";
-    public static final String NEW_UA_TIMEZONE = "Europe/Kyiv";
+    public static final Map<String, String> REPLACING_TIMEZONE = Map.of(
+        "Europe/Kyiv", "Europe/Kiev",
+        "Asia/Calcutta", "Asia/Kolkata"
+    );
 
     static {
         DATA_TYPE_ALIASES.put("boolean", TYPE_BOOL);

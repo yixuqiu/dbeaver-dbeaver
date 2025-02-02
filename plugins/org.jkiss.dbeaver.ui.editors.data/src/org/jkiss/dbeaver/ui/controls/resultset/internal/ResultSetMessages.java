@@ -16,7 +16,7 @@
  */
 package org.jkiss.dbeaver.ui.controls.resultset.internal;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class ResultSetMessages extends NLS {
     public static final String BUNDLE_NAME = "org.jkiss.dbeaver.ui.controls.resultset.internal.ResultSetMessages"; //$NON-NLS-1$
@@ -83,6 +83,7 @@ public class ResultSetMessages extends NLS {
     public static String controls_resultset_viewer_action_column_view;
     public static String controls_resultset_viewer_action_logical_structure;
     public static String controls_resultset_viewer_action_view_format;
+    public static String controls_resultset_viewer_action_view_hints;
     public static String controls_resultset_viewer_action_view_as;
     public static String controls_resultset_viewer_action_view_column_type;
     public static String controls_resultset_viewer_action_view_column_types;
@@ -125,6 +126,10 @@ public class ResultSetMessages extends NLS {
     public static String controls_resultset_ref_menu_references;
     public static String controls_resultset_ref_menu_no_associations;
     public static String controls_resultset_ref_menu_associations;
+
+    public static String controls_resultset_results_read_only;
+    public static String controls_resultset_results_read_only_status;
+    public static String controls_resultset_results_edit_key;
 
     public static String controls_rs_pump_job_context_name;
     public static String controls_rs_pump_job_name;
@@ -294,6 +299,7 @@ public class ResultSetMessages extends NLS {
 
     public static String pref_page_data_viewer_dictionary_panel_group;
     public static String getPref_page_data_viewer_dictionary_panel_results_max_size;
+    public static String getPref_page_data_viewer_dictionary_panel_results_max_size_tip;
 
 
     public static String dialog_data_format_profiles_button_delete_profile;
@@ -313,7 +319,7 @@ public class ResultSetMessages extends NLS {
     public static String dialog_save_script_button_delete_cascade_tip;
     public static String dialog_save_script_button_delete_deep_cascade;
     public static String dialog_save_script_button_delete_deep_cascade_tip;
-    public static String dialog_save_script_button_bar_button_persist;
+    public static String dialog_save_script_button_bar_button_execute;
     public static String dialog_save_script_button_bar_button_copy;
 
     //Preference/Properties
@@ -411,6 +417,7 @@ public class ResultSetMessages extends NLS {
     public static String panel_editor_text_loading_placeholder_label;
     public static String panel_editor_text_word_wrap_name;
     public static String panel_editor_text_auto_format_name;
+    public static String panel_editor_text_minify_name;
     public static String panel_editor_text_encoding_name;
     public static String panel_editor_text_encoding_title;
     public static String panel_editor_text_content_limitation_lbl;
@@ -463,6 +470,7 @@ public class ResultSetMessages extends NLS {
     public static String copy_special_force_quote_cell_values_tip;
     public static String copy_special_copy_as_html_text;
     public static String copy_special_copy_as_html_tip;
+    public static String copy_special_hint_for_hotkey;
 
     public static String filter_panel_filters_history_text;
     public static String filter_panel_expand_panel_text;

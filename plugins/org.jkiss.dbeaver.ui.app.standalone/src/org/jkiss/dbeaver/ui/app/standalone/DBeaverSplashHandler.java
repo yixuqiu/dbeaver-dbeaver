@@ -1,7 +1,7 @@
 
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2024 DBeaver Corp and others
+ * Copyright (C) 2010-2025 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.resource.StringConverter;
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.graphics.Color;
-import org.eclipse.swt.graphics.Font;
-import org.eclipse.swt.graphics.FontData;
-import org.eclipse.swt.graphics.Point;
-import org.eclipse.swt.graphics.RGB;
-import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.graphics.*;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.branding.IProductConstants;
 import org.eclipse.ui.splash.BasicSplashHandler;
@@ -68,13 +63,12 @@ public class DBeaverSplashHandler extends BasicSplashHandler {
     @Override
     public void init(Shell splash) {
         super.init(splash);
-        /*
-         * Related to a bug in MacOS Sonoma
-         * (https://github.com/eclipse-platform/eclipse.platform.swt/issues/772)
-         */
-        if (RuntimeUtils.isMacOsSomona()) {
+
+        // https://github.com/eclipse-platform/eclipse.platform.swt/issues/772
+        if (RuntimeUtils.isMacOS() && RuntimeUtils.isOSVersionAtLeast(14, 0, 0)) {
             return;
         }
+
         try {
             initVisualization();
 
@@ -87,11 +81,8 @@ public class DBeaverSplashHandler extends BasicSplashHandler {
     
     @Override
     public IProgressMonitor getBundleProgressMonitor() {
-        /*
-         * Related to a bug in MacOS Sonoma
-         * (https://github.com/eclipse-platform/eclipse.platform.swt/issues/772)
-         */
-        if (RuntimeUtils.isMacOsSomona()) {
+        // https://github.com/eclipse-platform/eclipse.platform.swt/issues/772
+        if (RuntimeUtils.isMacOS() && RuntimeUtils.isOSVersionAtLeast(14, 0, 0)) {
             return null;
         }
         return super.getBundleProgressMonitor();
@@ -99,31 +90,22 @@ public class DBeaverSplashHandler extends BasicSplashHandler {
 
     private void initVisualization() {
         String progressRectString = null, messageRectString = null, foregroundColorString = null,
-            versionCoordString = null, versionInfoSizeString = null, versionInfoColorString = null;
+            versionCoordString = null, versionInfoSizeString = null;
         final IProduct product = Platform.getProduct();
         if (product != null) {
             progressRectString = product.getProperty(IProductConstants.STARTUP_PROGRESS_RECT);
             messageRectString = product.getProperty(IProductConstants.STARTUP_MESSAGE_RECT);
-            foregroundColorString = product.getProperty(IProductConstants.STARTUP_FOREGROUND_COLOR);
             versionCoordString = product.getProperty("versionInfoCoord");
             versionInfoSizeString = product.getProperty("versionInfoSize");
-            versionInfoColorString = product.getProperty("versionInfoColor");
         }
 
         setProgressRect(StringConverter.asRectangle(progressRectString, new Rectangle(275, 300, 280, 10)));
         setMessageRect(StringConverter.asRectangle(messageRectString, new Rectangle(275,275,280,25)));
         final Point versionCoord = StringConverter.asPoint(versionCoordString, new Point(485, 215));
         final int versionInfoSize = StringConverter.asInt(versionInfoSizeString, 22);
-        final RGB versionInfoRGB = StringConverter.asRGB(versionInfoColorString, new RGB(255,255,255));
+        final RGB versionInfoRGB = new RGB(255,255,255);
 
-        int foregroundColorInteger = 0xD2D7FF;
-        try {
-			if (foregroundColorString != null) {
-				foregroundColorInteger = Integer.parseInt(foregroundColorString, 16);
-			}
-        } catch (Exception ex) {
-            // ignore
-        }
+        int foregroundColorInteger = 0xFFFFFF;
 
         setForeground(
 			new RGB(

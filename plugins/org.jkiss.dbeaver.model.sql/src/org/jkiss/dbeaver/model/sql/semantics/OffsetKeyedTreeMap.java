@@ -16,6 +16,8 @@
  */
 package org.jkiss.dbeaver.model.sql.semantics;
 
+import org.jkiss.code.Nullable;
+
 import java.util.Iterator;
 import java.util.Set;
 import java.util.function.BiConsumer;
@@ -173,26 +175,29 @@ public class OffsetKeyedTreeMap<T> {
     }
     
     public T put(int pos, T value, RemappingFunction<T> remappingFunction) {
-        T result;
+        T oldValue;
 
         if (this.root.isSentinel()) {
             this.root = new Node<>(pos, value, false, null, null);
             this.root.refreshBlackHeight();
             this.size++;
-            result = value;
+            oldValue = null;
         } else {
             NodeAndParentAtOffset<T> location = this.findImpl(pos);
             if (location.node.isNotSentinel()) {
-                if (location.node.content == null) {
+                oldValue = location.node.content;
+                T newValue;
+                if (oldValue == null) {
                     this.tombstonesCount--;
-                    result = value;
+                    newValue = value;
                 } else if (remappingFunction == null) {
-                    result = value;
+                    newValue = value;
                 } else {
-                    result = remappingFunction.apply(pos, value, location.node.content);
+                    newValue = remappingFunction.apply(pos, value, oldValue);
                 }
-                location.node.content = result;
+                location.node.content = newValue;
             } else {
+                oldValue = null;
                 Node<T> newNode = new Node<>(location.offset, value, true, null, null);
                 Node<T> parent = location.parent;
               
@@ -205,12 +210,10 @@ public class OffsetKeyedTreeMap<T> {
                 this.size++;
         
                 this.restoreAfterInsert(newNode);
-                
-                result = value;
             }
         }
         
-        return result;
+        return oldValue;
     }
 
     ///<summary>
@@ -410,6 +413,7 @@ public class OffsetKeyedTreeMap<T> {
         NodeAndParentAtOffset<T> initialLocation = this.findImpl(position);
         return switch (this.size) {
             case 0 -> new NodesIterator<T>() {
+                @Nullable
                 @Override
                 public T getCurrValue() {
                     return null;
@@ -417,7 +421,7 @@ public class OffsetKeyedTreeMap<T> {
 
                 @Override
                 public int getCurrOffset() {
-                    return 0;
+                    return position;
                 }
 
                 @Override
@@ -433,7 +437,9 @@ public class OffsetKeyedTreeMap<T> {
             case 1 -> new NodesIterator<T>() {
                 boolean beforeFirst = position < OffsetKeyedTreeMap.this.root.offset;
                 boolean afterLast = position > OffsetKeyedTreeMap.this.root.offset;
-                Node<T> theOnlyNode = OffsetKeyedTreeMap.this.root;
+                final Node<T> theOnlyNode = OffsetKeyedTreeMap.this.root;
+
+                @Nullable
                 @Override
                 public T getCurrValue() {
                     return !this.beforeFirst && !this.afterLast ? this.theOnlyNode.content : null;
@@ -441,7 +447,7 @@ public class OffsetKeyedTreeMap<T> {
 
                 @Override
                 public int getCurrOffset() {
-                    return this.beforeFirst ? 0 : (this.afterLast ? Integer.MAX_VALUE : this.theOnlyNode.offset);
+                    return this.beforeFirst ? Integer.MIN_VALUE : (this.afterLast ? Integer.MAX_VALUE : this.theOnlyNode.offset);
                 }
 
                 @Override
@@ -479,6 +485,7 @@ public class OffsetKeyedTreeMap<T> {
                     initialLocation.node.isSentinel() ? position : position - initialLocation.node.offset
                 );
 
+                @Nullable
                 @Override
                 public T getCurrValue() {
                     return this.currentLocation.node == null ? null : this.currentLocation.node.content;
@@ -516,7 +523,10 @@ public class OffsetKeyedTreeMap<T> {
                 public boolean next() {
                     if (this.initial && initialLocation.node.isSentinel()) {
                         // the exact initial position not found, so proceed with its parent
-                        NodeAndOffset<T> parentLocation = new NodeAndOffset<>(initialLocation.parent, position - initialLocation.offset);
+                        NodeAndOffset<T> parentLocation = new NodeAndOffset<>(
+                            initialLocation.parent,
+                            position - initialLocation.offset - (initialLocation.isLeft ? 0 : initialLocation.parent.offset)
+                        );
                         this.currentLocation = initialLocation.isLeft ? parentLocation : findNext(parentLocation);
                     } else if (this.afterLast) {
                         return false;
@@ -973,6 +983,7 @@ public class OffsetKeyedTreeMap<T> {
 
     public void forEach(BiConsumer<Integer, T> action) {
         if (root.isNotSentinel()) {
+            int currOffset = 0;
             Node<T> node = root;
             Node<T> prev = null;
             Node<T> next = null;
@@ -986,26 +997,31 @@ public class OffsetKeyedTreeMap<T> {
                         next = node.left;
                     } else if (node.right.isNotSentinel()) {
                         // node's left is empty, go to the right
-                        action.accept(node.offset, node.content);
+                        action.accept(currOffset + node.offset, node.content);
+                        currOffset += node.offset;
                         next = node.right;
                     } else {
                         // both left and right are sentinels, so this is leaf
-                        action.accept(node.offset, node.content);
+                        action.accept(currOffset + node.offset, node.content);
+                        currOffset -= node.parent != null && node.parent.right == node ? node.parent.offset : 0;
                         next = node.parent;
                     }
                 } else if (prev == node.left) {
                     // left is ready, prepare right
-                    action.accept(node.offset, node.content);
+                    action.accept(currOffset + node.offset, node.content);
 
                     if (node.right.isNotSentinel()) {
                         // right will be created later
+                        currOffset += node.offset;
                         next = node.right;
                     } else {
                         // right is sentinel
+                        currOffset -= node.parent != null && node.parent.right == node ? node.parent.offset : 0;
                         next = node.parent;
                     }
                 } else if (prev == node.right) {
                     // both subnodes are ready, rightmost was the last one
+                    currOffset -= node.parent != null && node.parent.right == node ? node.parent.offset : 0;
                     next = node.parent;
                 } else {
                     throw new IllegalStateException("RB-tree inconsistency detected");

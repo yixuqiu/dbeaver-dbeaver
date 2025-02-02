@@ -32,7 +32,6 @@ import org.eclipse.swt.widgets.*;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPreferencePage;
 import org.eclipse.ui.IWorkbenchPropertyPage;
-import org.eclipse.ui.PlatformUI;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -40,6 +39,7 @@ import org.jkiss.dbeaver.DBeaverPreferences;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.core.CoreMessages;
 import org.jkiss.dbeaver.core.DesktopPlatform;
+import org.jkiss.dbeaver.core.ui.services.ApplicationPolicyService;
 import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.app.DBPPlatformDesktop;
 import org.jkiss.dbeaver.model.app.DBPPlatformLanguage;
@@ -97,10 +97,17 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
     protected Control createPreferenceContent(@NotNull Composite parent) {
         Composite composite = UIUtils.createPlaceholder(parent, 1, 5);
 
-        if (isStandalone) {
-            Group groupObjects = UIUtils.createControlGroup(composite, CoreMessages.pref_page_ui_general_group_general, 2, GridData.VERTICAL_ALIGN_BEGINNING, 0);
-            automaticUpdateCheck = UIUtils.createCheckbox(groupObjects, CoreMessages.pref_page_ui_general_checkbox_automatic_updates, null, false, 2);
-            //automaticUpdateCheck.setLayoutData(new GridData(GridData.BEGINNING, GridData.BEGINNING, true, false, 2, 1));
+        if (isStandalone && !ApplicationPolicyService.getInstance().isInstallUpdateDisabled()) {
+            Group groupObjects = UIUtils.createControlGroup(
+                composite, CoreMessages.pref_page_ui_general_group_general, 2,
+                GridData.VERTICAL_ALIGN_BEGINNING,
+                0);
+            automaticUpdateCheck = UIUtils.createCheckbox(
+                groupObjects,
+                CoreMessages.pref_page_ui_general_checkbox_automatic_updates,
+                null,
+                false,
+                2);
         }
         if (isStandalone) {
             Group regionalSettingsGroup = UIUtils.createControlGroup(composite,
@@ -168,27 +175,27 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
             ));
 
         }
-        Group groupObjects = UIUtils.createControlGroup(
-            composite,
-            CoreMessages.pref_page_ui_general_group_browser, 2,
-            GridData.FILL_HORIZONTAL | GridData.VERTICAL_ALIGN_BEGINNING, 0
-        );
-        if (isWindowsDesktopClient()) {
-            browserCombo = UIUtils.createLabelCombo(groupObjects, CoreMessages.pref_page_ui_general_combo_browser,
-                SWT.READ_ONLY
-            );
-            browserCombo.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
-            for (SWTBrowserRegistry.BrowserSelection value : SWTBrowserRegistry.BrowserSelection.values()) {
-                browserCombo.add(value.getFullName(), value.ordinal());
-            }
-            Control tipLabel =
-                UIUtils.createInfoLabel(groupObjects, CoreMessages.pref_page_ui_general_combo_browser_tip);
-            tipLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING,
-                GridData.VERTICAL_ALIGN_BEGINNING, false, false, 2, 1
-            ));
-        }
-
         if (isStandalone) {
+            Group groupObjects = UIUtils.createControlGroup(
+                composite,
+                CoreMessages.pref_page_ui_general_group_browser, 2,
+                GridData.FILL_HORIZONTAL | GridData.VERTICAL_ALIGN_BEGINNING, 0
+            );
+            if (RuntimeUtils.isWindows()) {
+                browserCombo = UIUtils.createLabelCombo(groupObjects, CoreMessages.pref_page_ui_general_combo_browser,
+                    SWT.READ_ONLY
+                );
+                browserCombo.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
+                for (SWTBrowserRegistry.BrowserSelection value : SWTBrowserRegistry.BrowserSelection.values()) {
+                    browserCombo.add(value.getFullName(), value.ordinal());
+                }
+                Control tipLabel =
+                    UIUtils.createInfoLabel(groupObjects, CoreMessages.pref_page_ui_general_combo_browser_tip);
+                tipLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING,
+                    GridData.VERTICAL_ALIGN_BEGINNING, false, false, 2, 1
+                ));
+            }
+
             useEmbeddedBrowserAuth = UIUtils.createCheckbox(groupObjects,
                 CoreMessages.pref_page_ui_general_check_browser_auth,
                 CoreMessages.pref_page_ui_general_check_browser_auth_tip,
@@ -227,11 +234,11 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
             browserCombo.select(SWTBrowserRegistry.getActiveBrowser().ordinal());
             useEmbeddedBrowserAuth.setEnabled(!SWTBrowserRegistry.getActiveBrowser().equals(SWTBrowserRegistry.BrowserSelection.IE));
         }
-        if (isStandalone) {
-            automaticUpdateCheck.setSelection(store.getBoolean(DBeaverPreferences.UI_AUTO_UPDATE_CHECK));
-            if (!RuntimeUtils.isLinux()) {
-                useEmbeddedBrowserAuth.setSelection(store.getBoolean(DBeaverPreferences.UI_USE_EMBEDDED_AUTH));
+        if (isStandalone) { 
+            if (!ApplicationPolicyService.getInstance().isInstallUpdateDisabled()) {
+                automaticUpdateCheck.setSelection(store.getBoolean(DBeaverPreferences.UI_AUTO_UPDATE_CHECK));
             }
+            useEmbeddedBrowserAuth.setSelection(store.getBoolean(DBeaverPreferences.UI_USE_EMBEDDED_AUTH));
         }
         final String timezone = store.getString(ModelPreferences.CLIENT_TIMEZONE);
         if (clientTimezone != null) {
@@ -247,8 +254,10 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
     protected void performDefaults() {
         DBPPreferenceStore store = DBWorkbench.getPlatform().getPreferenceStore();
         if (isStandalone) {
-            automaticUpdateCheck.setSelection(store.getDefaultBoolean(DBeaverPreferences.UI_AUTO_UPDATE_CHECK));
             useEmbeddedBrowserAuth.setSelection(store.getDefaultBoolean(DBeaverPreferences.UI_USE_EMBEDDED_AUTH));
+            if (!ApplicationPolicyService.getInstance().isInstallUpdateDisabled()) {
+                automaticUpdateCheck.setSelection(store.getDefaultBoolean(DBeaverPreferences.UI_AUTO_UPDATE_CHECK));
+            }
         }
         if (isWindowsDesktopClient()) {
             SWTBrowserRegistry.getActiveBrowser();
@@ -275,8 +284,12 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
         DBPPreferenceStore store = DBWorkbench.getPlatform().getPreferenceStore();
 
         if (isStandalone) {
-            store.setValue(DBeaverPreferences.UI_AUTO_UPDATE_CHECK, automaticUpdateCheck.getSelection());
             store.setValue(DBeaverPreferences.UI_USE_EMBEDDED_AUTH, useEmbeddedBrowserAuth.getSelection());
+            if (!ApplicationPolicyService.getInstance().isInstallUpdateDisabled()) {
+                store.setValue(DBeaverPreferences.UI_AUTO_UPDATE_CHECK, automaticUpdateCheck.getSelection());
+            } else {
+                store.setValue(DBeaverPreferences.UI_AUTO_UPDATE_CHECK, Boolean.FALSE);
+            }
         }
 
         if (isWindowsDesktopClient()) {
@@ -303,7 +316,7 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
                         getShell(),
                         "Restart " + GeneralUtils.getProductName(),
                         "You need to restart " + GeneralUtils.getProductName() + " to perform actual language change.\nDo you want to restart?")) {
-                        UIUtils.asyncExec(() -> PlatformUI.getWorkbench().restart());
+                        restartWorkbenchOnPrefChange();
                     }
                 }
             } catch (DBException e) {

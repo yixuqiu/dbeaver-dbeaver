@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.oracle.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBConstants;
@@ -146,7 +147,7 @@ public abstract class OracleTablePhysical extends OracleTableBase implements DBS
 
     @Override
     @Association
-    public Collection<OracleTableIndex> getIndexes(DBRProgressMonitor monitor)
+    public Collection<OracleTableIndex> getIndexes(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
         // Read indexes using cache
@@ -179,7 +180,7 @@ public abstract class OracleTablePhysical extends OracleTableBase implements DBS
                     }
                 }
             } catch (SQLException e) {
-                throw new DBException(e, getDataSource());
+                throw new DBDatabaseException(e, getDataSource());
             }
         }
         return partitionInfo;
@@ -408,7 +409,7 @@ public abstract class OracleTablePhysical extends OracleTableBase implements DBS
                 log.error(e);
             }
             tablespaces.sort(DBUtils.<OracleTablespace>nameComparator());
-            return tablespaces.toArray(new OracleTablespace[tablespaces.size()]);
+            return tablespaces.toArray(new OracleTablespace[0]);
         }
     }
 

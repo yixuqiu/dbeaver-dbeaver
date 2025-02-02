@@ -99,7 +99,8 @@ public class BookmarksHandlerImpl extends AbstractResourceHandler {
             super.openResource(resource);
             return;
         }
-        final DBNProject projectNode = DBWorkbench.getPlatform().getNavigatorModel().getRoot().getProjectNode(resource.getProject());
+        final DBNProject projectNode = NavigatorResources.getProjectNode(
+            DBWorkbench.getPlatform().getNavigatorModel().getRoot(), resource.getProject());
         if (projectNode == null) {
             throw new DBException("Can't find project node for '" + resource.getProject().getName() + "'"); //$NON-NLS-2$
         }
@@ -233,16 +234,16 @@ public class BookmarksHandlerImpl extends AbstractResourceHandler {
         throws DBException
     {
         if (CommonUtils.isEmpty(title)) {
-            title = node.getNodeDisplayName();
+            title = node.getNodeId();
         }
 
         List<String> nodePath = new ArrayList<>();
         for (DBNNode parent = node; !(parent instanceof DBNDataSource); parent = parent.getParentNode()) {
-            nodePath.add(0, parent.getNodeDisplayName());
+            nodePath.add(0, parent.getNodeId());
         }
         BookmarkStorage storage = new BookmarkStorage(
             title,
-            node.getNodeTypeLabel() + " " + node.getNodeDisplayName(), //$NON-NLS-1$
+            node.getNodeTypeLabel() + " " + node.getNodeId(), //$NON-NLS-1$
             node.getNodeIconDefault(),
             node.getDataSourceContainer().getId(),
             nodePath);
@@ -277,7 +278,7 @@ public class BookmarksHandlerImpl extends AbstractResourceHandler {
                     final DBNNode[] children = currentNode.getChildren(monitor);
                     if (!ArrayUtils.isEmpty(children)) {
                         for (DBNNode node : children) {
-                            if (path.equals(node.getNodeDisplayName())) {
+                            if (path.equals(node.getNodeId()) || path.equals(node.getNodeDisplayName())) {
                                 nextChild = node;
                                 break;
                             }

@@ -17,10 +17,11 @@
 package org.jkiss.dbeaver.model;
 
 import org.jkiss.dbeaver.model.sql.SQLUtils;
+import org.jkiss.junit.DBeaverUnitTest;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class SQLUtilsTest {
+public class SQLUtilsTest extends DBeaverUnitTest {
     @Test
     public void makeRegexFromLikeTest() {
         Assert.assertEquals("^ABC$", SQLUtils.makeRegexFromLike("ABC"));
@@ -43,5 +44,18 @@ public class SQLUtilsTest {
             + "FROM Persons drai where PersonID  = 1\r\n"
             + "-- AND ResourceId  = 1\n\r"
             + "ORDER BY PersonID ;"));
+    }
+
+    @Test
+    public void makeGlobFromSqlLikePattern_whenWithNoSpecialSymbols_thenSuccess(){
+
+        String source = "key1234";
+        Assert.assertEquals(source, SQLUtils.makeGlobFromSqlLikePattern(source));
+    }
+
+    @Test
+    public void makeGlobFromSqlLikePattern_whenWithSpecialSymbols_thenSuccess(){
+
+        Assert.assertEquals("key?*\\?*\\", SQLUtils.makeGlobFromSqlLikePattern("key_%?*\\"));
     }
 }

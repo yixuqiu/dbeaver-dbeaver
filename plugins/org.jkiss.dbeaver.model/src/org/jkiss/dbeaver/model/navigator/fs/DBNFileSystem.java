@@ -32,6 +32,7 @@ import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.navigator.DBNEvent;
 import org.jkiss.dbeaver.model.navigator.DBNLazyNode;
 import org.jkiss.dbeaver.model.navigator.DBNNode;
+import org.jkiss.dbeaver.model.navigator.DBNUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.utils.CommonUtils;
@@ -130,8 +131,8 @@ public class DBNFileSystem extends DBNNode implements DBNLazyNode
     }
 
     @Override
-    public DBNFileSystemRoot[] getChildren(DBRProgressMonitor monitor) throws DBException {
-        if (children == null) {
+    public DBNFileSystemRoot[] getChildren(@NotNull DBRProgressMonitor monitor) throws DBException {
+        if (children == null && !monitor.isForceCacheUsage()) {
             this.children = readChildNodes(monitor, null);
         }
         return children;
@@ -173,7 +174,7 @@ public class DBNFileSystem extends DBNNode implements DBNLazyNode
         if (mergeWith != null) {
             for (DBNFileSystemRoot oldRoot : mergeWith) {
                 if (!result.contains(oldRoot)) {
-                    oldRoot.dispose(false);
+                    DBNUtils.disposeNode(oldRoot, false);
                     break;
                 }
             }

@@ -51,7 +51,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class NavigatorDropTargetListener implements DropTargetListener {
@@ -96,7 +95,7 @@ public class NavigatorDropTargetListener implements DropTargetListener {
 
     private void handleDragEvent(DropTargetEvent event) {
         event.detail = isDropSupported(event) ? DND.DROP_MOVE : DND.DROP_NONE;
-        event.feedback = DND.FEEDBACK_SELECT;
+        event.feedback = DND.FEEDBACK_SELECT | DND.FEEDBACK_SCROLL;
     }
 
     private boolean isDropSupported(DropTargetEvent event) {
@@ -251,7 +250,7 @@ public class NavigatorDropTargetListener implements DropTargetListener {
                 }
                 List<Path> sourceFolderContents;
                 try (Stream<Path> list = Files.list(extFile)) {
-                    sourceFolderContents = list.collect(Collectors.toList());
+                    sourceFolderContents = list.toList();
                 }
                 for (Path folderFile : sourceFolderContents) {
                     dropFileIntoContainer(monitor, subFolder, folderFile);

@@ -19,13 +19,12 @@ package org.jkiss.dbeaver.registry;
 import org.eclipse.core.runtime.IConfigurationElement;
 import org.eclipse.core.runtime.IExtensionRegistry;
 import org.eclipse.core.runtime.Platform;
+import org.jkiss.api.DriverReference;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.DBConfigurationController;
-import org.jkiss.dbeaver.model.DBPDataSourceContainer;
-import org.jkiss.dbeaver.model.DBPDataSourceOriginProvider;
-import org.jkiss.dbeaver.model.DBPDataSourcePermission;
+import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.app.DBPRegistryListener;
 import org.jkiss.dbeaver.model.connection.*;
 import org.jkiss.dbeaver.model.impl.preferences.SimplePreferenceStore;
@@ -67,6 +66,7 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
     }
 
     private final List<DataSourceProviderDescriptor> dataSourceProviders = new ArrayList<>();
+    private final Map<String, DataSourceProviderDescriptor> dataSourceProvidersMap = new HashMap<>();
     private final List<DBPRegistryListener> registryListeners = new ArrayList<>();
     private final List<DataSourceHandlerDescriptor> dataSourceHandlers = new ArrayList<>();
     private final Map<String, DBPConnectionType> connectionTypes = new LinkedHashMap<>();
@@ -100,6 +100,13 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
                 // do nothing
             }
         };
+        WorkspaceConfigEventManager.addConfigChangedListener(DriverDescriptorSerializerLegacy.DRIVERS_FILE_NAME, o -> {
+            // Delete custom drivers because they are removed from drivers.xml
+            for (DataSourceProviderDescriptor dataSourceProvider : dataSourceProviders) {
+                dataSourceProvider.removeCustomAndDisabledDrivers();
+            }
+            readDriversConfig();
+        });
     }
 
     private void loadExtensions(IExtensionRegistry registry) {
@@ -122,6 +129,7 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
                     case RegistryConstants.TAG_DATASOURCE: {
                         DataSourceProviderDescriptor provider = new DataSourceProviderDescriptor(this, ext);
                         dataSourceProviders.add(provider);
+                        dataSourceProvidersMap.put(provider.getId(), provider);
                         break;
                     }
                     case RegistryConstants.TAG_DATASOURCE_ORIGIN: {
@@ -202,46 +210,8 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
 
         {
             // Try to load initial drivers config
-            String providedDriversConfig = System.getProperty("dbeaver.drivers.configuration-file");
-            if (!CommonUtils.isEmpty(providedDriversConfig)) {
-                Path configFile = Path.of(providedDriversConfig);
-                if (Files.exists(configFile)) {
-                    log.debug("Loading provided drivers configuration from '" + configFile.toAbsolutePath() + "'");
-                    loadDrivers(providedDriversConfig, true);
-                } else {
-                    log.debug("Provided drivers configuration file '" + configFile.toAbsolutePath() + "' doesn't exist");
-                }
-            }
-
-            // Load user drivers
-            loadDrivers(DriverDescriptorSerializerLegacy.DRIVERS_FILE_NAME, false);
+            readDriversConfig();
         }
-
-        // Resolve all driver replacements
-        {
-            List<DriverDescriptor> allDrivers = new ArrayList<>();
-            for (DataSourceProviderDescriptor provider : dataSourceProviders) {
-                allDrivers.addAll(provider.getDrivers());
-            }
-            for (DriverDescriptor driver1 : allDrivers) {
-                for (DriverDescriptor driver2 : allDrivers) {
-                    if (driver1 != driver2 && driver1.replaces(driver2)) {
-                        driver2.setReplacedBy(driver1);
-                    }
-                }
-            }
-        }
-
-        int driverCount = 0, customDriverCount = 0;
-        for (DataSourceProviderDescriptor pd : dataSourceProviders) {
-            for (DBPDriver dd : pd.getDrivers()) {
-                if (!dd.isDisabled() && dd.getReplacedBy() == null) {
-                    driverCount++;
-                    if (dd.isCustom()) customDriverCount++;
-                }
-            }
-        }
-        log.debug("Total database drivers: " + driverCount + " (" + (driverCount - customDriverCount) + ")");
 
         // Load connection types
         {
@@ -293,6 +263,54 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
         }
     }
 
+    private void readDriversConfig() {
+        String providedDriversConfig = System.getProperty("dbeaver.drivers.configuration-file");
+        if (!CommonUtils.isEmpty(providedDriversConfig)) {
+            Path configFile = Path.of(providedDriversConfig);
+            if (Files.exists(configFile)) {
+                log.debug("Loading provided drivers configuration from '" + configFile.toAbsolutePath() + "'");
+                loadDrivers(providedDriversConfig, true);
+            } else {
+                log.debug("Provided drivers configuration file '" + configFile.toAbsolutePath() + "' doesn't exist");
+            }
+        }
+
+        // Load user drivers
+        loadDrivers(DriverDescriptorSerializerLegacy.DRIVERS_FILE_NAME, false);
+
+        // Resolve all driver replacements
+        {
+            List<DriverDescriptor> allDrivers = new ArrayList<>();
+            for (DataSourceProviderDescriptor provider : dataSourceProviders) {
+                allDrivers.addAll(provider.getDrivers());
+            }
+            for (DriverDescriptor driver1 : allDrivers) {
+                for (DriverDescriptor driver2 : allDrivers) {
+                    if (driver1 != driver2 && driver1.replaces(driver2)) {
+                        driver2.setReplacedBy(driver1);
+                    }
+                }
+            }
+        }
+
+        // Set provider properties to drivers
+        dataSourceProviders.forEach(DataSourceProviderDescriptor::setDriverProviderProperties);
+
+        int driverCount = 0;
+        int customDriverCount = 0;
+        for (DataSourceProviderDescriptor pd : dataSourceProviders) {
+            for (DBPDriver dd : pd.getDrivers()) {
+                if (!dd.isDisabled() && dd.getReplacedBy() == null) {
+                    driverCount++;
+                    if (dd.isCustom()) {
+                        customDriverCount++;
+                    }
+                }
+            }
+        }
+        log.debug("Total database drivers: " + driverCount + " (" + (driverCount - customDriverCount) + ")");
+    }
+
     public static void dispose() {
         if (instance != null) {
             instance.dispose0();
@@ -318,18 +336,14 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
     @Override
     @Nullable
     public DataSourceProviderDescriptor getDataSourceProvider(String id) {
-        for (DataSourceProviderDescriptor provider : dataSourceProviders) {
-            if (provider.getId().equals(id)) {
-                return provider;
-            }
-        }
-        return null;
+        return dataSourceProvidersMap.get(id);
     }
 
     @Override
     public DBPDataSourceProviderDescriptor makeFakeProvider(String providerID) {
         DataSourceProviderDescriptor provider = new DataSourceProviderDescriptor(this, providerID);
         dataSourceProviders.add(provider);
+        dataSourceProvidersMap.put(providerID, provider);
         return provider;
     }
 
@@ -346,6 +360,12 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
         );
 */
         return enabled;
+    }
+
+    @Nullable
+    @Override
+    public DBPDriver findDriver(@NotNull DriverReference ref) {
+        return findDriver(ref.shortId());
     }
 
     @Nullable
@@ -457,14 +477,22 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
 
     public void saveDrivers(DBConfigurationController configurationController) {
         try {
+            saveDriversConfigFile(configurationController);
+        } catch (Exception ex) {
+            log.error("Error saving drivers", ex);
+        }
+    }
+
+    public void saveDriversConfigFile(DBConfigurationController configurationController) throws DBException {
+        try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             new DriverDescriptorSerializerLegacy().serializeDrivers(baos, this.dataSourceProviders);
             configurationController.saveConfigurationFile(
                 DriverDescriptorSerializerLegacy.DRIVERS_FILE_NAME,
                 baos.toString(StandardCharsets.UTF_8)
             );
-        } catch (Exception ex) {
-            log.error("Error saving drivers", ex);
+        } catch (IOException e) {
+            throw new DBException("Error serializing drivers configuration file", e);
         }
     }
 
@@ -702,15 +730,15 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
                     CommonUtils.getBoolean(
                         atts.getValue(RegistryConstants.ATTR_AUTO_CLOSE_TRANSACTIONS),
                         origType != null && origType.isAutoCloseTransactions()),
-                    CommonUtils.toLong(
+                    CommonUtils.toInt(
                         atts.getValue(RegistryConstants.ATTR_CLOSE_TRANSACTIONS_PERIOD),
-                        origType != null ? origType.getCloseIdleTransactionPeriod() : RegistryConstants.DEFAULT_IDLE_TRANSACTION_PERIOD),
+                        origType != null ? origType.getCloseIdleTransactionPeriod() : DBPConnectionType.DEFAULT_TYPE.getCloseIdleTransactionPeriod()),
                     CommonUtils.getBoolean(
                         atts.getValue(RegistryConstants.ATTR_AUTO_CLOSE_CONNECTIONS),
                         origType != null && origType.isAutoCloseConnections()),
-                    CommonUtils.toLong(
+                    CommonUtils.toInt(
                         atts.getValue(RegistryConstants.ATTR_CLOSE_CONNECTIONS_PERIOD),
-                        origType != null ? origType.getCloseIdleConnectionPeriod() : 0)
+                        origType != null ? origType.getCloseIdleConnectionPeriod() : DBPConnectionType.DEFAULT_TYPE.getCloseIdleConnectionPeriod())
                     );
                 String modifyPermissionList = atts.getValue("modifyPermission");
                 if (!CommonUtils.isEmpty(modifyPermissionList)) {

@@ -106,7 +106,11 @@ public abstract class NavigatorViewBase extends ViewPart implements INavigatorMo
 //        EditorUtils.trackControlContext(getSite(), this.tree.getViewer().getControl(), INavigatorModelView.NAVIGATOR_CONTEXT_ID);
 //        EditorUtils.trackControlContext(getSite(), this.tree.getViewer().getControl(), INavigatorModelView.NAVIGATOR_VIEW_CONTEXT_ID);
 
-        UIExecutionQueue.queueExec(() -> tree.setInput(getRootNode()));
+        UIExecutionQueue.queueExec(() -> {
+            if (!tree.isDisposed()) {
+                tree.setInput(getRootNode());
+            }
+        });
     }
 
     private DatabaseNavigatorTree createNavigatorTree(Composite parent, DBNNode rootNode) {
@@ -249,9 +253,12 @@ public abstract class NavigatorViewBase extends ViewPart implements INavigatorMo
             if (lastSelection instanceof DBNRoot) {
                 // Don't display status message for root node - it has no meaningful information
                 getViewSite().getActionBars().getStatusLineManager().setMessage(null);
-            } else if (lastSelection instanceof DBNNode) {
-                final String name = ((DBNNode) lastSelection).getNodeDisplayName();
-                final String desc = ((DBNNode) lastSelection).getNodeDescription();
+            } else if (lastSelection instanceof DBNNode node) {
+                String name = node.getNodeDisplayName();
+                String desc = node.getNodeDescription();
+                if (node instanceof DBNDatabaseNode && !(node instanceof DBNDatabaseFolder)) {
+                    name = node.getNodeTypeLabel() + ": " + name;
+                }
                 if (CommonUtils.isEmpty(desc)) {
                     getViewSite().getActionBars().getStatusLineManager().setMessage(name);
                 } else {

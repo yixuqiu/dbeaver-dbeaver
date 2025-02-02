@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2024 DBeaver Corp and others
+ * Copyright (C) 2010-2025 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,13 +36,9 @@ import java.util.Set;
 
 /**
  * Datasource registry.
- * Extends DBPObject to support datasources ObjectManager
+ * Keeps all database connection information in a project
  */
 public interface DBPDataSourceRegistry extends DBPObject, DBPSecretHolder {
-
-    String LEGACY_CONFIG_FILE_PREFIX = ".dbeaver-data-sources"; //$NON-NLS-1$
-    String LEGACY_CONFIG_FILE_EXT = ".xml"; //$NON-NLS-1$
-    String LEGACY_CONFIG_FILE_NAME = LEGACY_CONFIG_FILE_PREFIX + LEGACY_CONFIG_FILE_EXT;
 
     String MODERN_CONFIG_FILE_PREFIX = "data-sources"; //$NON-NLS-1$
     String MODERN_CONFIG_FILE_EXT = ".json"; //$NON-NLS-1$
@@ -50,6 +46,11 @@ public interface DBPDataSourceRegistry extends DBPObject, DBPSecretHolder {
     String CREDENTIALS_CONFIG_FILE_PREFIX = "credentials-config"; //$NON-NLS-1$
     String CREDENTIALS_CONFIG_FILE_EXT = ".json"; //$NON-NLS-1$
     String CREDENTIALS_CONFIG_FILE_NAME = CREDENTIALS_CONFIG_FILE_PREFIX + CREDENTIALS_CONFIG_FILE_EXT;
+
+    String LEGACY_CONFIG_FILE_PREFIX = ".dbeaver-data-sources"; //$NON-NLS-1$
+    String LEGACY_CONFIG_FILE_EXT = ".xml"; //$NON-NLS-1$
+    String LEGACY_CONFIG_FILE_NAME = LEGACY_CONFIG_FILE_PREFIX + LEGACY_CONFIG_FILE_EXT;
+    String LEGACY2_CONFIG_FILE_NAME = "data-sources.xml"; //$NON-NLS-1$
 
     /**
      * Owner project.
@@ -73,10 +74,27 @@ public interface DBPDataSourceRegistry extends DBPObject, DBPSecretHolder {
     List<? extends DBPDataSourceContainer> getDataSources();
 
     @NotNull
-    DBPDataSourceContainer createDataSource(@NotNull DBPDriver driver, @NotNull DBPConnectionConfiguration connConfig);
+    <T extends DBPDataSourceContainer> T createDataSource(
+        @NotNull DBPDriver driver,
+        @NotNull DBPConnectionConfiguration connConfig
+    );
+
+    <T extends DBPDataSourceContainer> T createDataSource(
+        @NotNull String id,
+        @NotNull DBPDriver driver,
+        @NotNull DBPConnectionConfiguration connConfig
+    );
+
+    <T extends DBPDataSourceContainer> T createDataSource(
+        @NotNull DBPDataSourceConfigurationStorage dataSourceStorage,
+        @NotNull DBPDataSourceOrigin origin,
+        @NotNull String id,
+        @NotNull DBPDriver driver,
+        @NotNull DBPConnectionConfiguration configuration
+    );
 
     @NotNull
-    DBPDataSourceContainer createDataSource(@NotNull DBPDataSourceContainer source);
+    <T extends DBPDataSourceContainer> T createDataSource(@NotNull DBPDataSourceContainer source);
 
     void addDataSourceListener(@NotNull DBPEventListener listener);
 
@@ -94,7 +112,7 @@ public interface DBPDataSourceRegistry extends DBPObject, DBPSecretHolder {
     @NotNull
     List<? extends DBPDataSourceFolder> getRootFolders();
 
-    @Nullable
+    @NotNull
     DBPDataSourceFolder getFolder(@NotNull String path);
 
     @NotNull
@@ -146,7 +164,7 @@ public interface DBPDataSourceRegistry extends DBPObject, DBPSecretHolder {
     void refreshConfig();
 
     /**
-     * Refreshes configuration of specified datasources
+     * Refreshes configuration of specified data sources
      */
     void refreshConfig(@Nullable Collection<String> dataSourceIds);
 
@@ -159,7 +177,7 @@ public interface DBPDataSourceRegistry extends DBPObject, DBPSecretHolder {
     boolean hasError();
 
     /**
-     * Throws lasty occured load/save error
+     * Throws last occurred load/save error
      */
     void checkForErrors() throws DBException;
 
@@ -184,5 +202,4 @@ public interface DBPDataSourceRegistry extends DBPObject, DBPSecretHolder {
     DBPPreferenceStore getPreferenceStore();
 
     void dispose();
-
 }

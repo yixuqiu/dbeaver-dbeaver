@@ -18,14 +18,13 @@ package org.jkiss.dbeaver.ui.dashboard.control;
 
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.ToolBar;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.title.LegendTitle;
+import org.jfree.chart.ui.RectangleEdge;
 import org.jfree.data.time.FixedMillisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 import org.jfree.data.time.TimeSeriesDataItem;
-import org.jfree.ui.RectangleEdge;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.ui.AWTUtils;
 import org.jkiss.dbeaver.ui.UIStyles;
@@ -57,11 +56,6 @@ public abstract class DashboardRendererDatabaseChart extends DashboardRendererAb
         }
         dataset.addSeries(seriesCos);
 
-    }
-
-    @Override
-    public void fillDashboardToolbar(@NotNull DashboardItemContainer itemContainer, @NotNull ToolBar toolBar, @NotNull Composite chartComposite, @NotNull DashboardItemViewSettings dashboardConfig) {
-        super.fillDashboardToolbar(itemContainer, toolBar, chartComposite, dashboardConfig);
     }
 
     @Override

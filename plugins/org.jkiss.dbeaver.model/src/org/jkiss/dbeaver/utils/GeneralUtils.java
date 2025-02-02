@@ -55,12 +55,15 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * General non-ui utility methods
  */
 public class GeneralUtils {
     private static final Log log = Log.getLog(GeneralUtils.class);
+
+    public static final Pattern URI_SCHEMA_PATTERN = Pattern.compile("([a-zA-Z0-9-_]+:).+");
 
     public static final String UTF8_ENCODING = StandardCharsets.UTF_8.name();
     public static final String DEFAULT_ENCODING = UTF8_ENCODING;
@@ -70,7 +73,8 @@ public class GeneralUtils {
 
     public static final String DEFAULT_TIMESTAMP_PATTERN = "yyyyMMddHHmm";
     public static final String DEFAULT_DATE_PATTERN = "yyyyMMdd";
-    public static final String RESOURCE_NAME_FORBIDDEN_SYMBOLS_REGEX = "(?U)[^/:'\"\\\\]+";
+    public static final String DEFAULT_TIME_PATTERN = "HHmmss";
+    public static final String RESOURCE_NAME_FORBIDDEN_SYMBOLS_REGEX = "(?U)[^/:'\"\\\\<>|?*]+";
 
     public static final String[] byteToHex = new String[256];
     public static final char[] nibbleToHex = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -120,6 +124,14 @@ public class GeneralUtils {
 
     public static String getDefaultLineSeparator() {
         return System.getProperty(StandardConstants.ENV_LINE_SEPARATOR, "\n");
+    }
+
+    /**
+     * Replaces all line separators with system line separators
+     */
+    @NotNull
+    public static String normalizeLineSeparators(@NotNull String str) {
+        return str.replaceAll("\r\n|\r|\n", getDefaultLineSeparator());
     }
 
     public static void writeBytesAsHex(Writer out, byte[] buf, int off, int len) throws IOException {
@@ -243,23 +255,6 @@ public class GeneralUtils {
     private static String normalizeIntegerString(String value) {
         int divPos = value.lastIndexOf('.');
         return divPos == -1 ? value : value.substring(0, divPos);
-    }
-
-    public static Throwable getRootCause(Throwable ex) {
-        for (Throwable e = ex; ; e = e.getCause()) {
-            if (e.getCause() == null) {
-                return e;
-            }
-        }
-    }
-
-    public static boolean hasCause(Throwable ex, Class<? extends Throwable> causeClass) {
-        for (Throwable e = ex; e != null; e = e.getCause()) {
-            if (causeClass.isAssignableFrom(e.getClass())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     @NotNull
@@ -417,6 +412,11 @@ public class GeneralUtils {
         return null;
     }
 
+    @NotNull
+    public static String getProductEarlyAccessURL() {
+        return Platform.getProduct().getProperty("earlyAccessURL");
+    }
+
     public static String getExpressionParseMessage(Exception e) {
         String message = e.getMessage();
         if (message == null) {
@@ -497,13 +497,20 @@ public class GeneralUtils {
         return text.toString();
     }
 
+    /**
+     * recursively iterates through all variables and returns root
+     **/
     @Nullable
-    public static String extractVariableName(@NotNull String string) {
-        Matcher matcher = VAR_PATTERN.matcher(string);
-        if (matcher.find()) {
-            return matcher.group(2);
+    public static String extractVariableName(@NotNull String variablePattern) {
+        Matcher matcher = VAR_PATTERN.matcher(variablePattern);
+        String name = null;
+        String s = variablePattern;
+        while (matcher.find()) {
+            name = matcher.group(2);
+            s = substituteVariable(s, matcher, "");
+            matcher = VAR_PATTERN.matcher(s);
         }
-        return null;
+        return name;
     }
 
     @NotNull
@@ -577,6 +584,36 @@ public class GeneralUtils {
 
     public static IStatus makeExceptionStatus(int severity, Throwable ex) {
         return makeExceptionStatus(severity, ex, false);
+    }
+
+    public static IStatus transformExceptionsToStatus(@NotNull List<Throwable> exceptions) {
+
+        if (exceptions.isEmpty()) {
+            return new Status(IStatus.ERROR, (Class<?>) null, "Empty exceptions list");
+        }
+        Set<String> exceptionMessageSet = new HashSet<>();
+        IStatus prev = null;
+        for (Throwable exception : exceptions) {
+            String message = exception.getMessage();
+            if (prev == null) {
+                exceptionMessageSet.add(message);
+                prev = new Status(
+                    IStatus.ERROR,
+                    ModelPreferences.PLUGIN_ID,
+                    message,
+                    null);
+            } else {
+                if (exceptionMessageSet.contains(message)) {
+                    continue;
+                }
+                prev = new MultiStatus(ModelPreferences.PLUGIN_ID,
+                    0,
+                    new IStatus[]{prev},
+                    message,
+                    null);
+            }
+        }
+        return prev;
     }
 
     private static IStatus makeExceptionStatus(int severity, Throwable ex, boolean nested) {
@@ -730,29 +767,60 @@ public class GeneralUtils {
     }
 
     public static Path getMetadataFolder() {
-        try {
-            final File workspacePath = RuntimeUtils.getLocalFileFromURL(Platform.getInstanceLocation().getURL());
-            Path metaDir = getMetadataFolder(workspacePath.toPath());
-            if (!Files.exists(metaDir)) {
-                try {
-                    Files.createDirectories(metaDir);
-                } catch (IOException e) {
-                    return Platform.getLogFileLocation().toFile().toPath();
-                }
+        Path workspacePath;
+        if (!DBWorkbench.isPlatformStarted()) {
+            log.debug("Platform not initialized: metadata folder may be not set");
+            try {
+                workspacePath = RuntimeUtils.getLocalPathFromURL(Platform.getInstanceLocation().getURL());
+            } catch (IOException e) {
+                throw new IllegalStateException("Can't parse workspace location URL", e);
             }
-            return metaDir;
-        } catch (IOException e) {
-            throw new IllegalStateException("Can't parse workspace location URL", e);
+        } else {
+            DBPWorkspace workspace = DBWorkbench.getPlatform().getWorkspace();
+            if (workspace == null) {
+                log.warn("Metadata is read before workspace initialization");
+                try {
+                    workspacePath = RuntimeUtils.getLocalPathFromURL(Platform.getInstanceLocation().getURL());
+                } catch (IOException e) {
+                    throw new IllegalStateException("Can't parse workspace location URL", e);
+                }
+            } else {
+                workspacePath = workspace.getAbsolutePath();
+            }
         }
+        Path metaDir = getMetadataFolder(workspacePath);
+        if (!Files.exists(metaDir)) {
+            try {
+                Files.createDirectories(metaDir);
+            } catch (IOException e) {
+                return Platform.getLogFileLocation().toFile().toPath();
+            }
+        }
+        return metaDir;
     }
 
     public static Path getMetadataFolder(Path workspaceFolder) {
         return workspaceFolder.resolve(DBPWorkspace.METADATA_FOLDER);
     }
 
+    // Workaround for broken URLs.
+    // In some cases we get file path from URI and it looks like file:/c:/path with spaces/
+    // Thus we can't parse it as URL or URI (because of spaces and special characters)
+    // and we can't parse it as file (because of file:/ prefix - it fail on Windows at least)
+    // So we remove schema prefix if present and convert path to URI.
     @NotNull
     public static URI makeURIFromFilePath(@NotNull String path) throws URISyntaxException {
-        return new URI(path.replace(" ", "%20"));
+        Matcher matcher = URI_SCHEMA_PATTERN.matcher(path);
+        if (matcher.matches()) {
+            String plainPath = path.substring(matcher.end(1));
+            if (RuntimeUtils.isWindows()) {
+                // Trim leading slashes on Windows
+                while (plainPath.startsWith("/") && plainPath.indexOf(':') >= 0)
+                    plainPath = plainPath.substring(1);
+            }
+            return Path.of(plainPath).toUri();
+        }
+        return Path.of(path).toUri();
     }
 
     /////////////////////////////////////////////////////////////////////////
@@ -847,15 +915,48 @@ public class GeneralUtils {
         return new UUID(target.getLong(), target.getLong());
     }
 
+    /**
+     * Validates the resource name, only if the application is running in desktop mode.
+     *
+     * @param name the resource name to validate
+     * @throws DBException if the resource name is invalid
+     */
     public static void validateResourceName(String name) throws DBException {
         if (!DBWorkbench.isDistributed() && !DBWorkbench.getPlatform().getApplication().isMultiuser()) {
             return;
         }
+        validateResourceNameUnconditionally(name);
+    }
+
+    /**
+     * Validates the resource name unconditionally.
+     *
+     * @param name resource name to validate
+     * @throws DBException if resource name is invalid
+     */
+    public static void validateResourceNameUnconditionally(String name) throws DBException {
         if (name.startsWith(".")) {
             throw new DBException("Resource name '" + name + "' can't start with dot");
         }
-        if (!name.matches(GeneralUtils.RESOURCE_NAME_FORBIDDEN_SYMBOLS_REGEX)) {
-            throw new DBException("Resource name '" + name + "' contains illegal characters:  / : ' \" \\");
+
+        String forbiddenSymbols = name.replaceAll(RESOURCE_NAME_FORBIDDEN_SYMBOLS_REGEX, "");
+        if (CommonUtils.isNotEmpty(forbiddenSymbols)) {
+            String forbiddenExplain = forbiddenSymbols.chars()
+                .mapToObj(c -> Character.toString((char) c))
+                .collect(Collectors.joining(" "));
+            throw new DBException("Resource name '" + name + "' contains illegal characters:  " + forbiddenExplain);
         }
+    }
+
+    /**
+     * Normalizes line endings by converting Windows ({@code \\r\n}) and
+     * macOS ({@code \r}) line endings to Unix ({@code \n}) line endings.
+     *
+     * @param text the text to normalize
+     * @return the normalized text
+     */
+    @NotNull
+    public static String normalizeLineEndings(@NotNull String text) {
+        return text.replaceAll("(\r\n)|\r", "\n");
     }
 }

@@ -40,6 +40,38 @@ options {
      * limitations under the License.
      */
     package org.jkiss.dbeaver.model.lsm.sql.impl.syntax;
+
+    import java.util.*;
+
+    import org.jkiss.dbeaver.model.lsm.*;
+}
+
+@parser::members {
+    private final Set<Integer> nonCorrelationNameTokens = Set.of(
+        SQLStandardLexer.CROSS,
+        SQLStandardLexer.JOIN,
+        SQLStandardLexer.INNER,
+        SQLStandardLexer.OUTER,
+        SQLStandardLexer.UNION,
+        SQLStandardLexer.LEFT,
+        SQLStandardLexer.RIGHT,
+        SQLStandardLexer.FULL,
+        SQLStandardLexer.NATURAL
+    );
+
+    private boolean isAnonymousParametersEnabled;
+    private boolean isNamedParametersEnabled;
+
+    public SQLStandardParser(TokenStream input, LSMAnalyzerParameters parameters) {
+        this(input);
+        this.isAnonymousParametersEnabled = parameters.isAnonymousSqlParametersEnabled();
+        this.isNamedParametersEnabled = parameters.isSqlParametersEnabled();
+    }
+
+    private boolean validCorrelationNameFollows() {
+        int nextToken = this.getInputStream().LA(1);
+        return nextToken == SQLStandardLexer.AS || !this.nonCorrelationNameTokens.contains(nextToken);
+    };
 }
 
 // root rule for script
@@ -64,18 +96,18 @@ timestampLiteral: TIMESTAMP StringLiteralContent;
 intervalLiteral: INTERVAL sign? valueExpressionPrimary intervalQualifier;
 
 // identifiers
-characterSetSpecification: characterSetName;
-characterSetName: (schemaName Period)? Identifier;
-schemaName: (catalogName Period)? unqualifiedSchemaName;
-unqualifiedSchemaName: identifier;
-qualifiedName: (schemaName Period)? identifier;
-catalogName: identifier;
+characterSetSpecification: qualifiedName;
+characterSetName: qualifiedName;
+schemaName: qualifiedName;
+
+qualifiedName: identifier (Period identifier)* Period??;
 identifier: (Introducer characterSetSpecification)? actualIdentifier;
 actualIdentifier: (Identifier|DelimitedIdentifier|nonReserved|Quotted);
 
 // data types
-dataType: (datetimeType|intervalType|anyWordsWithProperty (CHARACTER SET characterSetSpecification)?);
-datetimeType: (DATE|TIME (LeftParen UnsignedInteger RightParen)? (WITH TIME ZONE)?|TIMESTAMP (LeftParen UnsignedInteger RightParen)? (WITH TIME ZONE)?);
+dataType: (arrayType|datetimeType|intervalType|qualifiedName|anyWordsWithProperty (CHARACTER SET characterSetSpecification)?);
+arrayType: ARRAY LeftParen dataType RightParen; // TODO parse it conditionally on the database engine?
+datetimeType: DATE|TIME (LeftParen UnsignedInteger RightParen)? (WITH TIME ZONE)?|TIMESTAMP (LeftParen UnsignedInteger RightParen)? (WITH TIME ZONE)?;
 intervalType: INTERVAL intervalQualifier;
 intervalQualifier: (startField TO endField|singleDatetimeField);
 startField: nonSecondDatetimeField (LeftParen intervalLeadingFieldPrecision RightParen)?;
@@ -86,29 +118,32 @@ intervalFractionalSecondsPrecision: UnsignedInteger;
 singleDatetimeField: (nonSecondDatetimeField (LeftParen intervalLeadingFieldPrecision RightParen)?|SECOND (LeftParen intervalLeadingFieldPrecision (Comma intervalFractionalSecondsPrecision)? RightParen)?);
 
 // column definition
-columnDefinition: columnName dataType (defaultClause)? (columnConstraintDefinition)* (anyWordWithAnyValue)?;
+columnDefinition: columnName dataType defaultClause? columnConstraintDefinition* anyWordWithAnyValue?; // why anyWordWithAnyValue?
 columnName: identifier;
 
 // default
-defaultClause: DEFAULT anyWordsWithProperty;
+defaultClause: DEFAULT? valueExpression;
 
 // column constraints
 columnConstraintDefinition: (constraintNameDefinition)? columnConstraint (constraintAttributes)?;
 constraintNameDefinition: CONSTRAINT constraintName;
 constraintName: qualifiedName;
-columnConstraint: (NOT NULL|UNIQUE|PRIMARY KEY|referencesSpecification|checkConstraintDefinition);
+columnConstraint: columnConstraintNotNull|columnConstraintUnique|columnConstraintPrimaryKey|referencesSpecification|checkConstraintDefinition;
+columnConstraintNotNull: NOT NULL;
+columnConstraintUnique: UNIQUE;
+columnConstraintPrimaryKey: PRIMARY KEY;
 checkConstraintDefinition: CHECK LeftParen searchCondition RightParen;
 
 // references
-referencesSpecification: REFERENCES referencedTableAndColumns (MATCH matchType)? (referentialTriggeredAction)?;
+referencesSpecification: REFERENCES referencedTableAndColumns (MATCH matchType)? referentialTriggeredAction?;
 referencedTableAndColumns: tableName (LeftParen referenceColumnList RightParen)?;
 tableName: qualifiedName;
 referenceColumnList: columnNameList;
-columnNameList: columnName (Comma columnName)*;
-matchType: (FULL|PARTIAL);
-referentialTriggeredAction: (updateRule (deleteRule)?|deleteRule (updateRule)?);
+columnNameList: (columnName|anyUnexpected??) (Comma (columnName|anyUnexpected??))* Comma*;
+matchType: FULL|PARTIAL;
+referentialTriggeredAction: updateRule deleteRule? | deleteRule updateRule?;
 updateRule: ON UPDATE referentialAction;
-referentialAction: (CASCADE|SET NULL|SET DEFAULT|NO ACTION);
+referentialAction: CASCADE|SET NULL|SET DEFAULT|NO ACTION;
 deleteRule: ON DELETE referentialAction;
 
 // search conditions
@@ -132,7 +167,7 @@ compOp: (EqualsOperator|NotEqualsOperator|LessThanOperator|GreaterThanOperator|L
 quantifier: (ALL|SOME|ANY);
 truthValue: (TRUE|FALSE|UNKNOWN);
 existsPredicate: EXISTS tableSubquery;
-likePredicate: matchValue (NOT)? LIKE pattern (ESCAPE escapeCharacter)?;
+likePredicate: matchValue (NOT)? (LIKE|ILIKE) pattern? (ESCAPE escapeCharacter)?;
 matchValue: characterValueExpression;
 pattern: characterValueExpression;
 escapeCharacter: characterValueExpression;
@@ -149,15 +184,15 @@ parameterSpecification: parameterName (indicatorParameter)?;
 parameterName: Colon identifier;
 indicatorParameter: (INDICATOR)? parameterName;
 dynamicParameterSpecification: QuestionMark;
-columnReference: ((qualifier Period)? (columnName))|(qualifier Period Asterisk);
+columnReference: (tableName tupleRefSuffix) | qualifiedName;
+tupleRefSuffix: Period Asterisk;
 //columnReference: identifier (Period identifier (Period identifier (Period identifier)?)?)?;
 valueReference: (columnReference|valueRefNestedExpr) valueRefIndexingStep* (valueRefMemberStep valueRefIndexingStep*)*;
 valueRefNestedExpr: LeftParen valueReference RightParen;
 valueRefIndexingStep: LeftBracket (valueRefIndexingStepDirect|valueRefIndexingStepSlice) RightBracket;
 valueRefIndexingStepDirect: signedNumericLiteral;
 valueRefIndexingStepSlice: signedNumericLiteral? Colon signedNumericLiteral?;
-valueRefMemberStep: Period identifier;
-qualifier: (tableName|correlationName);
+valueRefMemberStep: Period identifier?;
 correlationName: identifier;
 
 withClause: WITH RECURSIVE? cteList;
@@ -188,18 +223,18 @@ queryExpression: (joinedTable|nonJoinQueryTerm) (unionTerm|exceptTerm)*;
 
 // from
 fromClause: FROM tableReference (Comma tableReference)*;
-nonjoinedTableReference: (tableName (PARTITION anyProperty)? (correlationSpecification)?)|(derivedTable correlationSpecification?);
-tableReference: nonjoinedTableReference|joinedTable|tableReferenceHints|anyUnexpected??; // '.*' to handle incomplete queries
+nonjoinedTableReference: ((tableName (PARTITION anyProperty)?)|derivedTable) correlationSpecification?;
+tableReference: ((nonjoinedTableReference|joinedTable) tableReferenceHints??)|anyUnexpected??;
 tableReferenceHints: (tableHintKeywords|anyWord)+ anyProperty; // dialect-specific options, should be described and moved to dialects in future
 joinedTable: (nonjoinedTableReference|(LeftParen joinedTable RightParen)) (naturalJoinTerm|crossJoinTerm)+;
-correlationSpecification: (AS)? correlationName (LeftParen derivedColumnList RightParen)?;
+correlationSpecification: { validCorrelationNameFollows() }? (AS)? correlationName (LeftParen derivedColumnList RightParen)?;
 derivedColumnList: columnNameList;
 derivedTable: tableSubquery;
 tableSubquery: subquery;
 
 //joins
 crossJoinTerm: CROSS JOIN tableReference;
-naturalJoinTerm: (NATURAL)? (joinType)? JOIN tableReference (joinSpecification)? anyUnexpected??; // (.*?) - for error recovery
+naturalJoinTerm: (NATURAL)? (joinType)? JOIN tableReference (joinSpecification|anyUnexpected??)?; // (.*?) - for error recovery
 joinType: (INNER|outerJoinType (OUTER)?|UNION);
 outerJoinType: (LEFT|RIGHT|FULL);
 joinSpecification: (joinCondition|namedColumnsJoin);
@@ -211,17 +246,17 @@ joinColumnList: columnNameList;
 whereClause: WHERE searchCondition;
 groupByClause: GROUP BY groupingColumnReferenceList;
 groupingColumnReferenceList: groupingColumnReference (Comma groupingColumnReference)*;
-groupingColumnReference: valueReference | anyWordsWithProperty;
+groupingColumnReference: columnIndex | valueReference | anyWordsWithProperty;
 havingClause: HAVING searchCondition;
 tableValueConstructor: VALUES (rowValueConstructor (Comma rowValueConstructor)*);
-explicitTable: TABLE tableName;
+explicitTable: TABLE tableName?;
 correspondingSpec: CORRESPONDING (BY LeftParen correspondingColumnList RightParen)?;
 correspondingColumnList: columnNameList;
 caseExpression: (caseAbbreviation|simpleCase|searchedCase);
 caseAbbreviation: (NULLIF LeftParen valueExpression Comma valueExpression RightParen|COALESCE LeftParen valueExpression (Comma valueExpression)+ RightParen);
 simpleCase: CASE (valueExpression|searchCondition) (simpleWhenClause)+ (elseClause)? END;
 simpleWhenClause: WHEN (valueExpression|searchCondition) THEN result;
-result: valueExpression;
+result: valueExpression|searchCondition;
 elseClause: ELSE result;
 searchedCase: CASE (searchedWhenClause)+ (elseClause)? END;
 searchedWhenClause: WHEN searchCondition THEN result;
@@ -251,13 +286,16 @@ numericOperation:                           (((Asterisk|Solidus) factor)+ (sign 
 intervalOperation:       intervalQualifier?((((Asterisk|Solidus) factor)+ (sign intervalTerm)*)|((sign intervalTerm)+));
 intervalOperation2: Asterisk intervalFactor((((Asterisk|Solidus) factor)+ (sign intervalTerm)*)|((sign intervalTerm)+));
 
-valueExpressionPrimary: valueExpressionCast|valueExpressionAtom;
-valueExpressionCast: valueExpressionAtom TypeCast dataType;
-valueExpressionAtom: unsignedNumericLiteral|generalLiteral|generalValueSpecification|countAllExpression
+valueExpressionPrimary: valueExpressionAtom valueExpressionAttributeSpec? valueExpressionCastSpec?;
+valueExpressionAttributeSpec: Colon Identifier; // https://docs.snowflake.com/en/user-guide/tutorials/json-basics-tutorial
+valueExpressionCastSpec: TypeCast dataType;
+valueExpressionAtom: unsignedNumericLiteral|generalLiteral|countAllExpression
     |scalarSubquery|caseExpression|LeftParen valueExpression anyUnexpected?? RightParen|castSpecification
-    |aggregateExpression|nullSpecification|truthValue|variableExpression|anyWordsWithProperty2|valueReference|anyWordsWithProperty;
+    |aggregateExpression|nullSpecification|truthValue|variableExpression|generalValueSpecification|anyWordsWithProperty2|valueReference|anyWordsWithProperty;
 
-variableExpression: BatchVariableName|ClientVariableName|ClientParameterName;
+variableExpression: BatchVariableName|ClientVariableName|namedParameter|anonymouseParameter;
+namedParameter: {isNamedParametersEnabled}? (Colon|CustomNamedParameterPrefix) Identifier;
+anonymouseParameter: {isAnonymousParametersEnabled}? (QuestionMark|CustomAnonymousParameterMark);
 
 numericPrimary: (valueExpressionPrimary|extractExpression);
 factor: sign? numericPrimary;
@@ -296,34 +334,53 @@ orderByClause: ORDER BY sortSpecificationList;
 limitClause: LIMIT valueExpression (OFFSET valueExpression)? (Comma valueExpression)?;
 sortSpecificationList: sortSpecification (Comma sortSpecification)*;
 sortSpecification: sortKey (orderingSpecification)?;
-sortKey: valueReference | UnsignedInteger | anyWordsWithProperty;
+sortKey: valueReference | columnIndex | anyWordsWithProperty;
+columnIndex: UnsignedInteger;
 orderingSpecification: (ASC|DESC);
 
 // schema definition
-sqlSchemaStatement: (sqlSchemaDefinitionStatement|sqlSchemaManipulationStatement);
-sqlSchemaDefinitionStatement: (schemaDefinition|tableDefinition|viewDefinition);
-schemaDefinition: CREATE SCHEMA schemaNameClause (schemaCharacterSetSpecification)? (schemaElement)*;
-schemaNameClause: (schemaName|AUTHORIZATION schemaAuthorizationIdentifier|schemaName AUTHORIZATION schemaAuthorizationIdentifier);
+sqlSchemaStatement: schemaDefinition|
+    createTableStatement|createViewStatement|alterTableStatement|
+    dropSchemaStatement|dropTableStatement|dropViewStatement|dropProcedureStatement|dropCharacterSetStatement;
+schemaDefinition: CREATE SCHEMA (IF NOT EXISTS)? schemaNameClause schemaCharacterSetSpecification? schemaElement*;
+schemaNameClause: schemaName|AUTHORIZATION schemaAuthorizationIdentifier|schemaName AUTHORIZATION schemaAuthorizationIdentifier;
 schemaAuthorizationIdentifier: authorizationIdentifier;
 authorizationIdentifier: identifier;
 schemaCharacterSetSpecification: DEFAULT CHARACTER SET characterSetSpecification;
-schemaElement: (tableDefinition|viewDefinition);
+schemaElement: createTableStatement|createViewStatement;
 
-// table definition
-tableDefinition: CREATE ((GLOBAL|LOCAL) TEMPORARY)? TABLE tableName tableElementList (ON COMMIT (DELETE|PRESERVE) ROWS)?;
-viewDefinition: CREATE VIEW tableName (LeftParen viewColumnList RightParen)? AS queryExpression (WITH (levelsClause)? CHECK OPTION)?;
+createTableStatement: createTableHead (tableName? createTableExtraHead tableElementList createTableTail)?;
+createTableHead: CREATE (OR REPLACE)? (GLOBAL|LOCAL)? (TEMPORARY|TEMP)? TABLE (IF NOT EXISTS)? ;// here orReplace is MariaDB-specific only
+createTableExtraHead: (OF identifier)?;
+tableElementList: LeftParen tableElement (Comma tableElement)* RightParen;
+tableElement: (columnDefinition|tableConstraintDefinition) anyUnexpected??;
+createTableTail: anyUnexpected;
+//                 createTableTailForValues? createTableTailOther*
+//                 createTableTailPartition? createTableTailOther*
+//                 createTableTailOnCommit? createTableTailOther*;
+//createTableTailPartition: PARTITION BY (RANGE|LIST|HASH|anyUnexpected) LeftParen createTableTailPartitionColumnSpec (Comma createTableTailPartitionColumnSpec)* RightParen;
+//createTableTailPartitionColumnSpec: (columnName|valueExpression) anyWordsWithProperty?;
+//createTableTailOnCommit: ON COMMIT (DELETE|PRESERVE) ROWS;
+//createTableTailForValues: FOR VALUES createTablePartitionValuesSpec|DEFAULT;
+//createTablePartitionValuesSpec: IN LeftParen queryExpression (Comma queryExpression)* RightParen |
+//                     FROM LeftParen (queryExpression | MINVALUE | MAXVALUE) (Comma queryExpression | MINVALUE | MAXVALUE)* RightParen
+//                       TO LeftParen (queryExpression | MINVALUE | MAXVALUE) (Comma queryExpression | MINVALUE | MAXVALUE)* RightParen |
+//                     WITH LeftParen MODULUS signedNumericLiteral Comma REMAINDER signedNumericLiteral RightParen;
+//createTableTailOther: ((~(LeftParen|RightParen|Period|Semicolon|Comma|
+//        PARTITION|ON|FOR
+//    ))|(LeftParen anyUnexpected* RightParen))+;
+
+createViewStatement: CREATE VIEW tableName (LeftParen viewColumnList RightParen)? AS queryExpression (WITH (levelsClause)? CHECK OPTION)?;
 viewColumnList: columnNameList;
 levelsClause: (CASCADED|LOCAL);
-tableElementList: LeftParen tableElement (Comma tableElement)* RightParen;
-tableElement: (columnDefinition|tableConstraintDefinition);
 
 // schema ddl
-sqlSchemaManipulationStatement: (dropSchemaStatement|alterTableStatement|dropTableStatement|dropViewStatement|dropCharacterSetStatement);
 dropSchemaStatement: DROP SCHEMA schemaName dropBehaviour;
 dropBehaviour: (CASCADE|RESTRICT);
-alterTableStatement: ALTER TABLE tableName alterTableAction;
-alterTableAction: (addColumnDefinition|alterColumnDefinition|dropColumnDefinition|addTableConstraintDefinition|dropTableConstraintDefinition);
+alterTableStatement: ALTER anyWord* TABLE (IF EXISTS)? (tableName (alterTableAction (Comma alterTableAction)*)?)?;
+alterTableAction: addColumnDefinition|alterColumnDefinition|renameColumnDefinition|dropColumnDefinition|addTableConstraintDefinition|dropTableConstraintDefinition|anyWordsWithProperty;
 addColumnDefinition: ADD (COLUMN)? columnDefinition;
+renameColumnDefinition: RENAME (COLUMN)? columnName TO identifier;
 alterColumnDefinition: ALTER (COLUMN)? columnName alterColumnAction;
 alterColumnAction: (setColumnDefaultClause|dropColumnDefaultClause);
 setColumnDefaultClause: SET defaultClause;
@@ -331,24 +388,27 @@ dropColumnDefaultClause: DROP DEFAULT;
 dropColumnDefinition: DROP (COLUMN)? columnName dropBehaviour;
 addTableConstraintDefinition: ADD tableConstraintDefinition;
 dropTableConstraintDefinition: DROP CONSTRAINT constraintName dropBehaviour;
-dropTableStatement: DROP TABLE tableName dropBehaviour;
-dropViewStatement: DROP VIEW tableName dropBehaviour;
+dropTableStatement: DROP TABLE ifExistsSpec? (tableName (Comma tableName)*)? dropBehaviour?;
+dropViewStatement: DROP VIEW ifExistsSpec?  (tableName (Comma tableName)*)? dropBehaviour?;
+dropProcedureStatement: DROP PROCEDURE ifExistsSpec? qualifiedName dropBehaviour?;
 dropCharacterSetStatement: DROP CHARACTER SET characterSetName;
+ifExistsSpec: IF EXISTS ;
 
 // data statements
 selectStatementSingleRow: SELECT (setQuantifier)? selectList INTO selectTargetList tableExpression;
-selectTargetList: parameterSpecification (Comma parameterSpecification)*;
+selectTargetList: selectTargetItem (Comma selectTargetItem)* Comma*;
+selectTargetItem: parameterSpecification|tableName|anyUnexpected??;
 deleteStatement: DELETE FROM tableName? ((AS)? correlationName)? whereClause?;
-insertStatement: INSERT INTO tableName? insertColumnsAndSource?;
-insertColumnsAndSource: (LeftParen (insertColumnList? | Asterisk) RightParen?)? (queryExpression | DEFAULT VALUES);
+insertStatement: INSERT INTO (tableName insertColumnsAndSource?)?;
+insertColumnsAndSource: LeftParen (insertColumnList? | Asterisk) (RightParen (queryExpression | DEFAULT VALUES)?)?;
 insertColumnList: columnNameList;
 
 // UPDATE
 updateStatement: UPDATE anyWordsWithProperty?? tableReference? (SET setClauseList? fromClause? whereClause? orderByClause? limitClause? anyWordsWithProperty??)?;
 setClauseList: setClause (Comma setClause)*;
-setClause: ((setTarget | setTargetList) (EqualsOperator updateSource)?)|anyUnexpected??;
-setTarget: valueReference;
-setTargetList: LeftParen valueReference? (Comma valueReference)* RightParen?;
+setClause: ((setTarget | setTargetList) (EqualsOperator updateSource?)?)|anyUnexpected??;
+setTarget: columnName;
+setTargetList: LeftParen columnNameList? RightParen?;
 updateSource: updateValue | (LeftParen updateValue (Comma updateValue)* RightParen?);
 updateValue: valueExpression|DEFAULT;
 
@@ -380,7 +440,7 @@ anyValue: rowValueConstructor|searchCondition;
 anyWordWithAnyValue: anyWord anyValue;
 anyProperty: LeftParen (anyValue (Comma anyValue)*) RightParen;
 anyWordsWithProperty: anyWord+ anyProperty?;
-anyWordsWithProperty2: anyWord+ anyProperty overClause?;
+anyWordsWithProperty2: (anyWord|IF)+ anyProperty overClause?; // to handle if as function like IF(c.tipo_cliente='F','Física','Jurídica')
 
 aggregateExpression: actualIdentifier LeftParen aggregateExprParam+ RightParen (WITHIN GROUP LeftParen orderByClause RightParen)? (FILTER LeftParen WHERE searchCondition RightParen)?;
 aggregateExprParam: DISTINCT|ALL|ORDER|BY|ASC|DESC|LIMIT|SEPARATOR|OFFSET|rowValueConstructor;
@@ -397,12 +457,12 @@ THEN|GROUP|HAVING|UNION|EXCEPT|WITH|INTERSECT|ORDER|ON|USING|WHERE|INTO|FROM
 tableHintKeywords: WITH | UPDATE | IN | KEY | JOIN | ORDER BY | GROUP BY;
 
 nonReserved: COMMITTED | REPEATABLE | SERIALIZABLE | TYPE | UNCOMMITTED |
-    CURRENT_USER | SESSION_USER | SYSTEM_USER | USER | VALUE |
+    CURRENT_USER | SESSION_USER | SYSTEM_USER | USER | VALUE | RIGHT | LEFT |
     DATE | YEAR | MONTH | DAY | HOUR | MINUTE | SECOND | ZONE |
     ACTION | ADD | AUTHORIZATION | BY | CASCADE | CASCADED | CATALOG | COALESCE | COMMIT |
-    CONSTRAINT | CONSTRAINTS | CORRESPONDING | COUNT | DEFERRABLE | DEFERRED | IMMEDIATE |
+    CONSTRAINTS | CORRESPONDING | COUNT | DEFERRABLE | DEFERRED | IMMEDIATE |
     EXTRACT | FULL | GLOBAL | LOCAL | INDICATOR | INITIALLY | INTERVAL | ISOLATION | KEY | LEVEL |
     NAMES | NO | NULLIF| ONLY | OVERLAPS| PARTIAL | PRESERVE | READ | RESTRICT | ROLLBACK | SCHEMA |
     SESSION | SET | TEMPORARY | TIME | TIMESTAMP | TIMEZONE_HOUR | TIMEZONE_MINUTE | TRANSACTION |
-    VIEW | WORK | WRITE
+    VIEW | WORK | WRITE | ARRAY | REPLACE
 ;

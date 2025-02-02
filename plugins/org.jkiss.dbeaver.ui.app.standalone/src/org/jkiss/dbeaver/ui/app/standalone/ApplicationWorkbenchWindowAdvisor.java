@@ -43,13 +43,15 @@ import org.eclipse.ui.part.MarkerTransfer;
 import org.eclipse.ui.part.ResourceTransfer;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.core.DesktopUI;
+import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.app.*;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.registry.WorkbenchHandlerRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.IWorkbenchWindowInitializer;
 import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.actions.datasource.DataSourceHandler;
+import org.jkiss.dbeaver.ui.editors.DatabaseEditorPreferences;
 import org.jkiss.dbeaver.ui.editors.EditorUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 
@@ -216,9 +218,6 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
         //PlatformUI.getPreferenceStore().setValue(IWorkbenchPreferenceConstants.SHOW_MEMORY_MONITOR, true);
         hookTitleUpdateListeners(configurer);
 
-        // Initialize desktop UI
-        DesktopUI.getInstance();
-
         // Initialize drivers in the very beginning
         DataSourceProviderRegistry.getInstance();
     }
@@ -283,6 +282,7 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
                 @Override
                 public void partClosed(IWorkbenchPartReference ref) {
                     updateTitle(false);
+                    handlePartClosed(ref);
                 }
 
                 @Override
@@ -375,20 +375,27 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
             // Open New Connection wizard
                 initWorkbenchWindows();
         }
+
+        UIUtils.asyncExec(() -> {
+            // FIXME: dirty hack of standard commands handle (e.g. CTRL+C)
+            // Re-activate active part to trigger keybindings refresh for it
+            IWorkbenchPage activePage = getWindowConfigurer().getWindow().getActivePage();
+            IWorkbenchPart activePart = activePage.getActivePart();
+            if (activePart != null) {
+                for (IViewReference viewReference : activePage.getViewReferences()) {
+                    IViewPart view = viewReference.getView(false);
+                    if (view != null && view != activePart) {
+                        activePage.activate(view);
+                        activePage.activate(activePart);
+                        break;
+                    }
+                }
+            }
+        });
     }
 
     protected boolean isRunWorkbenchInitializers() {
         return true;
-    }
-
-    @Override
-    public void handleProjectAdd(@NotNull DBPProject project) {
-
-    }
-
-    @Override
-    public void handleProjectRemove(@NotNull DBPProject project) {
-
     }
 
     @Override
@@ -452,6 +459,48 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
                     page.closeEditors(new IEditorReference[]{reference}, false);
                 }
             }
+        }
+    }
+
+    private void handlePartClosed(@NotNull IWorkbenchPartReference ref) {
+        if (!DBWorkbench.getPlatform().getPreferenceStore().getBoolean(DatabaseEditorPreferences.PROP_DISCONNECT_ON_EDITORS_CLOSE)) {
+            return;
+        }
+        if (!(ref instanceof IEditorReference editor)) {
+            // Not an editor
+            return;
+        }
+        DBPDataSourceContainer container;
+        try {
+            container = EditorUtils.getInputDataSource(editor.getEditorInput());
+        } catch (PartInitException ignored) {
+            container = null;
+        }
+        if (container != null && !hasEditorsForDataSource(container)) {
+            log.debug("Last editor for '" + container.getName() + "' was closed. Closing connection");
+            DataSourceHandler.disconnectDataSource(container, null);
+        }
+    }
+
+    private boolean hasEditorsForDataSource(@NotNull DBPDataSourceContainer container) {
+        for (IWorkbenchWindow window : PlatformUI.getWorkbench().getWorkbenchWindows()) {
+            for (IWorkbenchPage page : window.getPages()) {
+                for (IEditorReference ref : page.getEditorReferences()) {
+                    if (isEditorForDataSource(ref, container)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isEditorForDataSource(@NotNull IEditorReference ref, @NotNull DBPDataSourceContainer container) {
+        try {
+            return EditorUtils.getInputDataSource(ref.getEditorInput()) == container;
+        } catch (PartInitException ignored) {
+            return false;
         }
     }
 
@@ -531,7 +580,7 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
             }
         }
         if (ps.getBoolean("SHOW_PRODUCT_IN_TITLE")) {
-            sj.add(GeneralUtils.getProductTitle());
+            sj.add(computeProductTitle());
         }
         IWorkbenchWindow window = getWindowConfigurer().getWindow();
         if (window != null) {
@@ -544,6 +593,11 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
             }
         }
         return sj.toString();
+    }
+
+    @NotNull
+    protected String computeProductTitle() {
+        return GeneralUtils.getProductTitle();
     }
 
 }

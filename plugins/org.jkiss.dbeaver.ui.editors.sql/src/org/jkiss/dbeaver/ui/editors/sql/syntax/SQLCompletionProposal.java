@@ -57,7 +57,7 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
 
     private static final Log log = Log.getLog(SQLCompletionProposal.class);
 
-    private String replacementLast;
+    private final String replacementLast;
     
     private boolean isNeverAddSpaceAfter = false;
 
@@ -72,8 +72,8 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
         DBPNamedObject object,
         Map<String, Object> params)
     {
-        super(request.getContext(), request.getWordDetector(), displayString, replacementString, cursorPosition, image, proposalType, description, object, params);
-        int divPos = this.replacementFull.lastIndexOf(getContext().getSyntaxManager().getStructSeparator());
+        super(request, displayString, replacementString, cursorPosition, image, proposalType, description, object, params);
+        int divPos = this.replacementFull.lastIndexOf(request.getContext().getSyntaxManager().getStructSeparator());
         if (divPos == -1) {
             this.replacementLast = null;
         } else {
@@ -114,15 +114,14 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
                     } else {
                         if (docLen <= replacementSum + 2) {
                             insertTrailingSpace = true;
-                        } else if (Character.isWhitespace(document.getChar(replacementSum))) {
-                            insertTrailingSpace = docLen > replacementSum + 1 && (!Character.isSpaceChar(document.getChar(replacementSum + 1)));
                         } else {
-                            insertTrailingSpace = true;
+                            final char ch = document.getChar(replacementSum);
+                            insertTrailingSpace = !Character.isWhitespace(ch) || ch == '\r' || ch == '\n';
                         }
                         if (insertTrailingSpace) {
                             replaceOn += ' ';
+                            cursorPosition++;
                         }
-                        cursorPosition++;
                     }
                 }
             }
@@ -189,8 +188,9 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
         if (event == null) {
             return false;
         }
-        SQLSyntaxManager syntaxManager = getContext().getSyntaxManager();
-        DBPDataSource dataSource = getContext().getDataSource();
+        this.getRequest().getActivityTracker().implicitlyTriggered();
+        SQLSyntaxManager syntaxManager = this.getRequest().getContext().getSyntaxManager();
+        DBPDataSource dataSource = this.getRequest().getContext().getDataSource();
         final SQLWordPartDetector wordDetector = new SQLWordPartDetector(document, syntaxManager, offset);
         String wordPart = wordDetector.getWordPart();
         int divPos = wordPart.lastIndexOf(syntaxManager.getStructSeparator());
@@ -266,7 +266,7 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
                 StyledString.createColorRegistryStyler(SQLConstants.CONFIG_COLOR_KEYWORD, null));
         } else if (getProposalType() == DBPKeywordType.FUNCTION) {
             return new StyledString(getDisplayString(),
-                StyledString.createColorRegistryStyler(SQLConstants.CONFIG_COLOR_DATATYPE, null));
+                StyledString.createColorRegistryStyler(SQLConstants.CONFIG_COLOR_FUNCTION, null));
         } else {
             return new StyledString(getDisplayString());
         }
@@ -274,7 +274,7 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
 
     @Override
     public IInformationControlCreator getInformationControlCreator() {
-        if (hasStructObject()) {
+        if (hasStructObject() && this.getRequest().getActivityTracker().isAdditionalInfoExpected()) {
             return SuggestionInformationControlCreator.INSTANCE;
         } else {
             return null;

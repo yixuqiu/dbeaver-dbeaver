@@ -98,7 +98,6 @@ public class ConnectionTestJob extends ConnectJob {
         Thread.currentThread().setName(ModelMessages.dialog_connection_wizard_start_connection_monitor_thread);
 
         try {
-            container.setName(container.getConnectionConfiguration().getUrl());
             long startTime = System.currentTimeMillis();
             super.run(monitor);
             connectTime = (System.currentTimeMillis() - startTime);
@@ -109,7 +108,7 @@ public class ConnectionTestJob extends ConnectJob {
                 return Status.CANCEL_STATUS;
             }
 
-            // Start monitor task here becaue actual connection makes its own begin/end sequence
+            // Start monitor task here because actual connection makes its own begin/end sequence
             monitor.beginTask(ModelMessages.dialog_connection_wizard_start_connection_monitor_start, 3);
 
             DBPDataSource dataSource = container.getDataSource();

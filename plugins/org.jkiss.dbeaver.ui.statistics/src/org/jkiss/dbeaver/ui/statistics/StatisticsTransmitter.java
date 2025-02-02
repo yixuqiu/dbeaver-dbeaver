@@ -42,7 +42,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class StatisticsTransmitter {
 
@@ -76,30 +76,36 @@ public class StatisticsTransmitter {
     private void sendStatistics(DBRProgressMonitor monitor, boolean sendActiveSession) {
         try {
             String appSessionId = DBWorkbench.getPlatform().getApplication().getApplicationRunId();
-            Path logsFolder = FeatureStatisticsCollector.getLogsFolder();
-            List<Path> logFiles = Files.list(logsFolder)
-                .filter(path -> path.getFileName().toString().endsWith(".log"))
-                .collect(Collectors.toList());
-            for (Path logFile : logFiles) {
-                String fileName = logFile.getFileName().toString();
-                fileName = fileName.substring(0, fileName.length() - 4);
-                String[] parts = fileName.split("_");
-                if (parts.length != 2) {
-                    continue;
-                }
-                String timestamp = parts[0];
-                String sessionId = parts[1];
-                if (sendActiveSession) {
-                    if (sessionId.equals(appSessionId)) {
-                        sendLogFile(logFile, timestamp, sessionId);
-                        break;
-                    }
-                } else {
-                    if (sessionId.equals(appSessionId)) {
-                        // This is active session
+            Path activityLogsFolder = FeatureStatisticsCollector.getActivityLogsFolder();
+            if (Files.exists(activityLogsFolder) && !Files.isWritable(activityLogsFolder)) {
+                log.debug("Read-only metadata folder - can't send statistics");
+                return;
+            }
+            try (Stream<Path> list = Files.list(activityLogsFolder)) {
+                List<Path> logFiles = list
+                    .filter(path -> path.getFileName().toString().endsWith(".log"))
+                    .toList();
+                for (Path logFile : logFiles) {
+                    String fileName = logFile.getFileName().toString();
+                    fileName = fileName.substring(0, fileName.length() - 4);
+                    String[] parts = fileName.split("_");
+                    if (parts.length != 2) {
                         continue;
                     }
-                    sendLogFile(logFile, timestamp, sessionId);
+                    String timestamp = parts[0];
+                    String sessionId = parts[1];
+                    if (sendActiveSession) {
+                        if (sessionId.equals(appSessionId)) {
+                            sendLogFile(logFile, timestamp, sessionId);
+                            break;
+                        }
+                    } else {
+                        if (sessionId.equals(appSessionId)) {
+                            // This is active session
+                            continue;
+                        }
+                        sendLogFile(logFile, timestamp, sessionId);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -108,6 +114,10 @@ public class StatisticsTransmitter {
     }
 
     private void sendLogFile(Path logFile, String timestamp, String sessionId) {
+        if (Files.exists(logFile) && !Files.isWritable(logFile)) {
+            log.debug("Statistics file is read-only, skipping transmission: " + logFile);
+            return;
+        }
         //log.debug("Sending statistics file '" + logFile.toAbsolutePath() + "'");
         try {
             URLConnection urlConnection = WebUtils.openURLConnection(
@@ -141,15 +151,13 @@ public class StatisticsTransmitter {
                 log.debug("Error reading statistics server response");
             }
             ((HttpURLConnection) urlConnection).disconnect();
-
-            Files.delete(logFile);
         } catch (Exception e) {
             log.debug("Error sending statistics file '" + logFile.toAbsolutePath() + "'.", e);
-
+        } finally {
             try {
                 Files.delete(logFile);
             } catch (IOException ex) {
-                log.debug("Error deleting file with usage statistics '" + logFile.toAbsolutePath() + "'.", e);
+                log.debug("Error deleting file with usage statistics '" + logFile.toAbsolutePath() + "'.", ex);
             }
         }
     }

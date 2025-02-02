@@ -272,7 +272,9 @@ public class Spreadsheet extends LightGrid implements Listener {
                     }
                     final SpreadsheetPresentation presentation = getPresentation();
                     final DBDAttributeBinding attribute = presentation.getCurrentAttribute();
-                    if (editorControl != null && attribute != null && presentation.getController().getAttributeReadOnlyStatus(attribute) == null && event.keyCode != SWT.CR) {
+                    if (editorControl != null && attribute != null &&
+                        presentation.getController().getAttributeReadOnlyStatus(attribute, true, true) == null &&
+                        event.keyCode != SWT.CR) {
                         if (!editorControl.isDisposed()) {
                             // We used to forward key even to control but it worked poorly.
                             // So let's just insert first letter (it will remove old value which must be selected for inline controls)
@@ -297,7 +299,7 @@ public class Spreadsheet extends LightGrid implements Listener {
                 }
                 break;
             case SWT.MouseDoubleClick:
-                if (event.button != 1) {
+                if (event.button != 1 || isHoveringOnLink()) {
                     return;
                 }
                 GridPos pos = super.getCell(new Point(event.x, event.y));
@@ -368,7 +370,11 @@ public class Spreadsheet extends LightGrid implements Listener {
             case LightGrid.Event_NavigateLink:
                 // Perform navigation async because it may change grid content and
                 // we don't want to mess current grid state
-                UIUtils.asyncExec(() -> presentation.navigateLink((GridCell) event.data, event.stateMask));
+                UIUtils.asyncExec(() -> presentation.navigateLink(
+                    (GridCell) event.data,
+                    event.x,
+                    event.y,
+                    event.stateMask));
                 break;
         }
     }

@@ -42,6 +42,7 @@ import org.jkiss.dbeaver.model.task.DBTTaskHandler;
 import org.jkiss.dbeaver.model.task.DBTTaskRunStatus;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ProgressStreamReader;
+import org.jkiss.dbeaver.runtime.ui.UIServiceSystemAgent;
 import org.jkiss.dbeaver.tasks.nativetool.messages.NativeToolMessages;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
@@ -266,8 +267,9 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
 
     protected void notifyToolFinish(String toolName, long workTime) {
         // Notify agent
-        if (workTime > DBWorkbench.getPlatformUI().getLongOperationTimeout() * 1000) {
-            DBWorkbench.getPlatformUI().notifyAgent(toolName, IStatus.INFO);
+        UIServiceSystemAgent serviceSystemAgent = DBWorkbench.getService(UIServiceSystemAgent.class);
+        if (serviceSystemAgent != null && workTime > serviceSystemAgent.getLongOperationTimeout() * 1000) {
+            serviceSystemAgent.notifyAgent(toolName, IStatus.INFO);
         }
     }
 
@@ -605,7 +607,7 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
     }
 
     protected String getDataSourcePassword(DBRProgressMonitor monitor, SETTINGS settings) {
-        // Try to obtain password thru auth model (mnakes sense for IAM-like models)
+        // Try to obtain password through auth model (makes sense for IAM-like models)
         String userPassword = null;
         DBPDataSourceContainer dataSourceContainer = settings.getDataSourceContainer();
         DBPConnectionConfiguration cfg = new DBPConnectionConfiguration(dataSourceContainer.getActualConnectionConfiguration());

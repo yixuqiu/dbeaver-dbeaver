@@ -17,6 +17,7 @@
 
 package org.jkiss.dbeaver.ext.oracle.model;
 
+import org.jkiss.dbeaver.ext.oracle.internal.OracleMessages;
 import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttribute;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttributeType;
@@ -100,6 +101,7 @@ public class OracleConstants {
     public static final String YES = "YES";
 
     public static final String TYPE_NAME_XML = "XMLTYPE";
+    public static final String TYPE_NAME_JSON = "JSON";
     public static final String TYPE_FQ_XML = "SYS.XMLTYPE";
     public static final String TYPE_NAME_GEOMETRY = "PUBLIC.SDO_GEOMETRY";
     public static final String TYPE_FQ_GEOMETRY = "MDSYS.SDO_GEOMETRY";
@@ -159,8 +161,10 @@ public class OracleConstants {
         "ROWID",
         "$alias.ROWID",
         null,
-        "Unique row identifier",
-        true);
+        OracleMessages.pseudo_column_rowid_description,
+        true,
+        DBDPseudoAttribute.PropagationPolicy.TABLE_LOCAL
+    );
 
     public static final String PREF_EXPLAIN_TABLE_NAME = "oracle.explain.table";
     public static final String PREF_SUPPORT_ROWID = "oracle.support.rowid";

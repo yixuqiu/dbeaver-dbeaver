@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.sqlite.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.generic.model.*;
@@ -60,12 +61,12 @@ public class SQLiteMetaModel extends GenericMetaModel implements DBCQueryTransfo
         super();
     }
 
-    public String getViewDDL(DBRProgressMonitor monitor, GenericView sourceObject, Map<String, Object> options) throws DBException {
+    public String getViewDDL(@NotNull DBRProgressMonitor monitor, @NotNull GenericView sourceObject, @NotNull Map<String, Object> options) throws DBException {
         return SQLiteUtils.readMasterDefinition(monitor, sourceObject, SQLiteObjectType.view, sourceObject.getName(), sourceObject);
     }
 
     @Override
-    public String getTableDDL(DBRProgressMonitor monitor, GenericTableBase sourceObject, Map<String, Object> options) throws DBException {
+    public String getTableDDL(@NotNull DBRProgressMonitor monitor, @NotNull GenericTableBase sourceObject, @NotNull Map<String, Object> options) throws DBException {
         String tableDDL = SQLiteUtils.readMasterDefinition(monitor, sourceObject, SQLiteObjectType.table, sourceObject.getName(), sourceObject);
         String indexesDDL = SQLiteUtils.readMasterDefinition(monitor, sourceObject, SQLiteObjectType.index, null, sourceObject);
         if (CommonUtils.isEmpty(indexesDDL)) {
@@ -77,6 +78,68 @@ public class SQLiteMetaModel extends GenericMetaModel implements DBCQueryTransfo
     @Override
     public boolean supportsTableDDLSplit(GenericTableBase sourceObject) {
         return false;
+    }
+
+    @Override
+    public JDBCStatement prepareTableLoadStatement(@NotNull JDBCSession session, @NotNull GenericStructContainer owner, @Nullable GenericTableBase object, @Nullable String objectName) throws SQLException {
+        String sql = """
+            SELECT
+                NULL AS TABLE_CAT,
+                NULL AS TABLE_SCHEM,
+                TABLES.NAME AS TABLE_NAME,
+                TABLES.TYPE AS TABLE_TYPE,
+                NULL AS REMARKS,
+                NULL AS TYPE_CAT,
+                NULL AS TYPE_SCHEM,
+                NULL AS TYPE_NAME,
+                NULL AS SELF_REFERENCING_COL_NAME,
+                NULL AS REF_GENERATION,
+                INFOS.STRICT AS STRICT
+            FROM
+                (
+                SELECT
+                    'sqlite_schema' AS NAME,
+                    'SYSTEM TABLE' AS TYPE
+                UNION ALL
+                SELECT
+                    NAME,
+                    UPPER(TYPE) AS TYPE
+                FROM
+                    sqlite_schema
+                WHERE
+                    NAME NOT LIKE 'sqlite\\_%' ESCAPE '\\'
+                    AND UPPER(TYPE) IN ('TABLE', 'VIEW')
+                UNION ALL
+                SELECT
+                    NAME,
+                    'GLOBAL TEMPORARY' AS TYPE
+                FROM
+                    sqlite_temp_master
+                UNION ALL
+                SELECT
+                    NAME,
+                    'SYSTEM TABLE' AS TYPE
+                FROM
+                    sqlite_schema
+                WHERE
+                    NAME LIKE 'sqlite\\_%' ESCAPE '\\'
+                ) AS TABLES
+                LEFT OUTER JOIN pragma_table_list AS INFOS
+                    ON INFOS.NAME = TABLES.NAME
+            """;
+
+        if (object == null && objectName == null) {
+            sql += "ORDER BY TABLE_TYPE, TABLE_NAME";
+        } else {
+            sql += "WHERE TABLE_NAME = ?";
+        }
+
+        JDBCPreparedStatement dbStat = session.prepareStatement(sql);
+        if (object != null || objectName != null) {
+            dbStat.setString(1, (object != null ? object.getName() : objectName));
+        }
+
+        return dbStat;
     }
 
     @Override
@@ -135,7 +198,7 @@ public class SQLiteMetaModel extends GenericMetaModel implements DBCQueryTransfo
                 return result;
             }
         } catch (SQLException e) {
-            throw new DBException(e, container.getDataSource());
+            throw new DBDatabaseException(e, container.getDataSource());
         }
     }
 
@@ -245,5 +308,11 @@ public class SQLiteMetaModel extends GenericMetaModel implements DBCQueryTransfo
             return "PRIMARY KEY AUTOINCREMENT";
         }
         return null;
+    }
+
+    @NotNull
+    @Override
+    protected String getDefaultTypeName() {
+        return "ANY"; //$NON-NLS-1$
     }
 }

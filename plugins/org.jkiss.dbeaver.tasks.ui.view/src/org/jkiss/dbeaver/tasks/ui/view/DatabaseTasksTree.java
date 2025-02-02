@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2024 DBeaver Corp and others
+ * Copyright (C) 2010-2025 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.jkiss.dbeaver.tasks.ui.view;
 
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
-import org.eclipse.jface.resource.ColorRegistry;
 import org.eclipse.jface.viewers.*;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.dnd.*;
@@ -45,6 +44,7 @@ import org.jkiss.dbeaver.registry.task.TaskRegistry;
 import org.jkiss.dbeaver.registry.timezone.TimezoneRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.tasks.ui.internal.TaskUIViewMessages;
+import org.jkiss.dbeaver.ui.BaseThemeSettings;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.DefaultViewerToolTipSupport;
 import org.jkiss.dbeaver.ui.UIUtils;
@@ -80,8 +80,7 @@ public class DatabaseTasksTree {
     public DatabaseTasksTree(Composite composite, boolean selector) {
         dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()); //$NON-NLS-1$
         dateFormat.setTimeZone(TimeZone.getTimeZone(TimezoneRegistry.getUserDefaultTimezone()));
-        ColorRegistry colorRegistry = UIUtils.getActiveWorkbenchWindow().getWorkbench().getThemeManager().getCurrentTheme().getColorRegistry();
-        colorError = colorRegistry.get("org.jkiss.dbeaver.txn.color.reverted.background");
+        colorError = BaseThemeSettings.instance.colorError;
         colorErrorForeground = UIUtils.getContrastColor(colorError);
         
         taskViewer = DialogUtils.createFilteredTree(composite,
@@ -320,7 +319,6 @@ public class DatabaseTasksTree {
     void refresh() {
         refreshTasks();
         regroupTasks(ExpansionOptions.RETAIN);
-        //taskViewer.refresh(true);
         refreshScheduledTasks();
     }
 
@@ -656,7 +654,7 @@ public class DatabaseTasksTree {
         }
     }
 
-    public class NamedObjectPatternFilter extends PatternFilter {
+    public static class NamedObjectPatternFilter extends PatternFilter {
         NamedObjectPatternFilter() {
             setIncludeLeadingWildcard(true);
         }
@@ -872,7 +870,7 @@ public class DatabaseTasksTree {
 
             private void handleDragEvent(DropTargetEvent event) {
                 event.detail = isDropSupported(event) ? DND.DROP_MOVE : DND.DROP_NONE;
-                event.feedback = DND.FEEDBACK_SELECT;
+                event.feedback = DND.FEEDBACK_SELECT | DND.FEEDBACK_SCROLL;
             }
 
             private boolean isDropSupported(DropTargetEvent event) {

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2024 DBeaver Corp and others
+ * Copyright (C) 2010-2025 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.eclipse.equinox.app.IApplicationContext;
 import org.eclipse.jface.window.Window;
 import org.eclipse.osgi.service.datalocation.Location;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.Resource;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.MessageBox;
@@ -46,10 +47,10 @@ import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.app.DBPApplicationController;
 import org.jkiss.dbeaver.model.app.DBPApplicationDesktop;
 import org.jkiss.dbeaver.model.app.DBPPlatform;
+import org.jkiss.dbeaver.model.impl.app.BaseWorkspaceImpl;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.model.rcp.DesktopApplicationImpl;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.dbeaver.registry.BaseWorkspaceImpl;
-import org.jkiss.dbeaver.registry.DesktopApplicationImpl;
 import org.jkiss.dbeaver.registry.SWTBrowserRegistry;
 import org.jkiss.dbeaver.registry.timezone.TimezoneRegistry;
 import org.jkiss.dbeaver.registry.updater.VersionDescriptor;
@@ -71,8 +72,10 @@ import org.osgi.framework.Version;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.net.URL;
-import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -117,7 +120,6 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
     private boolean reuseWorkspace = false;
     private boolean primaryInstance = true;
     private boolean headlessMode = false;
-    private boolean ignoreRecentWorkspaces = false;
 
     private DBeaverInstanceServer instanceServer;
 
@@ -250,8 +252,9 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
         // Write version info
         writeWorkspaceInfo();
 
-        // Update splash. Do it AFTER platform startup because platform may initiate some splash shell interactions
-        if (!RuntimeUtils.isMacOsSomona()) {
+        // https://github.com/eclipse-platform/eclipse.platform.swt/issues/772
+        if (!RuntimeUtils.isMacOS() || !RuntimeUtils.isOSVersionAtLeast(14, 0, 0)) {
+            // Update splash. Do it AFTER platform startup because platform may initiate some splash shell interactions
             updateSplashHandler();
         }
 
@@ -344,7 +347,7 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
         if (instanceLoc.isSet()) {
             return false;
         }
-        if (ignoreRecentWorkspaces) {
+        if (!isWorkspaceSwitchingAllowed()) {
             return false;
         }
         Collection<String> recentWorkspaces = getRecentWorkspaces(instanceLoc);
@@ -491,6 +494,7 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
                 shell.addDisposeListener(e -> {
                     Log.removeListener(splashListener);
                 });
+                DBeaverSplashHandler.showMessage("Starting " + Platform.getProduct().getName());
             }
         } catch (Throwable e) {
             e.printStackTrace(System.err);
@@ -535,7 +539,14 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
 
     // Called
     protected void initializeConfiguration() {
-
+        ModelPreferences.IPType stack = ModelPreferences.IPType.getPreferredStack();
+        if (stack != ModelPreferences.IPType.AUTO) {
+            System.setProperty("java.net.preferIPv4Stack", String.valueOf(stack == ModelPreferences.IPType.IPV4));
+        }
+        ModelPreferences.IPType address = ModelPreferences.IPType.getPreferredAddresses();
+        if (address != ModelPreferences.IPType.AUTO) {
+            System.setProperty("java.net.preferIPv6Addresses", String.valueOf(address == ModelPreferences.IPType.IPV6));
+        }
     }
 
     /**
@@ -556,6 +567,10 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
             if (display == null) {
                 display = PlatformUI.createDisplay();
             }
+
+            // Check for resource leaks
+            Resource.setNonDisposeHandler(originStack -> log.warn("SWT resource leak detected", originStack));
+            
             addIdleListeners();
         }
         return display;
@@ -573,7 +588,7 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
         String defaultHomePath = WORKSPACE_DIR_CURRENT;
         final Path homeDir = Path.of(defaultHomePath);
         try {
-            if (!Files.exists(homeDir) || Files.list(homeDir).count() == 0) {
+            if (!Files.exists(homeDir) || isEmptyFolder(homeDir)) {
                 if (!tryMigrateFromPreviousVersion(homeDir)) {
                     return false;
                 }
@@ -627,6 +642,12 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
         }
 
         return true;
+    }
+
+    private static boolean isEmptyFolder(Path path) throws IOException {
+        try (Stream<Path> list = Files.list(path)) {
+            return list.findAny().isEmpty();
+        }
     }
 
     protected boolean tryMigrateFromPreviousVersion(Path homeDir) {
@@ -750,7 +771,7 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
 
     @Override
     public boolean isPrimaryInstance() {
-        return primaryInstance;
+        return primaryInstance && !isHeadlessMode();
     }
 
     @Override
@@ -817,10 +838,6 @@ public class DBeaverApplication extends DesktopApplicationImpl implements DBPApp
 
     public void setResetWorkspaceConfigurationOnRestart(boolean resetWorkspaceConfigurationOnRestart) {
         this.resetWorkspaceConfigurationOnRestart = resetWorkspaceConfigurationOnRestart;
-    }
-
-    protected void setIgnoreRecentWorkspaces(boolean ignoreRecentWorkspaces) {
-        this.ignoreRecentWorkspaces = ignoreRecentWorkspaces;
     }
 
     private void saveStartupActions() {

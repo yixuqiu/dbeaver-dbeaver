@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ext.oracle.model.session;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.oracle.internal.OracleMessages;
 import org.jkiss.dbeaver.ext.oracle.model.OracleDataSource;
@@ -76,12 +77,12 @@ public class OracleServerSessionManager implements DBAServerSessionManager<Oracl
                 }
             }
         } catch (SQLException e) {
-            throw new DBException(e, session.getDataSource());
+            throw new DBDatabaseException(e, session.getDataSource());
         }
     }
 
     @Override
-    public void alterSession(@NotNull DBCSession session, @NotNull OracleServerSession sessionType, @NotNull Map<String, Object> options) throws DBException
+    public void alterSession(@NotNull DBCSession session, @NotNull String sessionId, @NotNull Map<String, Object> options) throws DBException
     {
         final boolean toKill = Boolean.TRUE.equals(options.get(PROP_KILL_SESSION));
         final boolean immediate = Boolean.TRUE.equals(options.get(PROP_IMMEDIATE));
@@ -93,12 +94,7 @@ public class OracleServerSessionManager implements DBAServerSessionManager<Oracl
             } else {
                 sql.append("DISCONNECT SESSION ");
             }
-            sql.append("'").append(sessionType.getSid()).append(',').append(sessionType.getSerial());
-            if (sessionType.getInstId() != 0 && sessionType.getInstId() != 1) {
-                // INSET_ID = 1 is hardcoded constant, means no RAC
-                sql.append(",@").append(sessionType.getInstId());
-            }
-            sql.append("'");
+            sql.append("'").append(sessionId).append("'");
             if (immediate) {
                 sql.append(" IMMEDIATE");
             } else if (!toKill) {
@@ -109,8 +105,14 @@ public class OracleServerSessionManager implements DBAServerSessionManager<Oracl
             }
         }
         catch (SQLException e) {
-            throw new DBException(e, session.getDataSource());
+            throw new DBDatabaseException(e, session.getDataSource());
         }
+    }
+
+    @NotNull
+    @Override
+    public Map<String, Object> getTerminateOptions() {
+        return Map.of(OracleServerSessionManager.PROP_KILL_SESSION, true);
     }
 
     @NotNull
@@ -140,7 +142,7 @@ public class OracleServerSessionManager implements DBAServerSessionManager<Oracl
                         }
                     }
                 } catch (SQLException e) {
-                    throw new DBException(e, session.getDataSource());
+                    throw new DBDatabaseException(e, session.getDataSource());
                 }
             }
 
@@ -172,7 +174,7 @@ public class OracleServerSessionManager implements DBAServerSessionManager<Oracl
 						}
                     }							
                 } catch (SQLException e) {
-                    throw new DBException(e, session.getDataSource());
+                    throw new DBDatabaseException(e, session.getDataSource());
                 }
             }
 
@@ -198,7 +200,9 @@ public class OracleServerSessionManager implements DBAServerSessionManager<Oracl
         sql.append(
             "SELECT s.*, ");
         if (atLeastV11) {
-            sql.append("sq.SQL_FULLTEXT, ");
+            sql.append("(SELECT SQL_FULLTEXT FROM gv$sql vsql\n" +
+                "WHERE s.sql_address = vsql.address(+) AND s.sql_hash_value = vsql.hash_value(+)\n" +
+                "AND s.sql_child_number = vsql.child_number (+)) as  SQL_FULLTEXT, ");
         } else {
             sql.append("sq.SQL_TEXT AS SQL_FULLTEXT, ");
         }

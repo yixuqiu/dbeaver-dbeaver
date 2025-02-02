@@ -17,9 +17,6 @@
 
 package org.jkiss.dbeaver.model.app;
 
-import org.eclipse.core.resources.IContainer;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -31,9 +28,9 @@ import org.jkiss.dbeaver.model.auth.SMSessionContext;
 import org.jkiss.dbeaver.model.fs.DBFFileSystemManager;
 import org.jkiss.dbeaver.model.navigator.DBNModel;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.secret.DBSValueEncryptor;
 import org.jkiss.dbeaver.model.task.DBTTaskManager;
 
-import javax.crypto.SecretKey;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
@@ -67,7 +64,7 @@ public interface DBPProject extends DBPObject, SMAuthSpace, DBAPermissionRealm {
     String getDisplayName();
 
     /**
-     * Proiject UUID was deprecated. Use getId instead.
+     * Project UUID was deprecated. Use getId instead.
      */
     @Deprecated
     @NotNull
@@ -75,12 +72,6 @@ public interface DBPProject extends DBPObject, SMAuthSpace, DBAPermissionRealm {
 
     @NotNull
     Path getAbsolutePath();
-
-    @Nullable
-    IProject getEclipseProject();
-
-    @Nullable
-    IContainer getRootResource();
 
     @NotNull
     Path getMetadataFolder(boolean create);
@@ -105,16 +96,25 @@ public interface DBPProject extends DBPObject, SMAuthSpace, DBAPermissionRealm {
     boolean isPrivateProject();
 
     /**
-     * Secret key is used encrypt project data
+     * An encryptor that can be used to encrypt and decrypt project data.
+     *
+     * @throws DBException if the encryptor is not available
      */
     @NotNull
-    SecretKey getLocalSecretKey();
+    DBSValueEncryptor getValueEncryptor() throws DBException;
 
     @NotNull
     DBPDataSourceRegistry getDataSourceRegistry();
 
     @NotNull
-    DBTTaskManager getTaskManager();
+    default DBTTaskManager getTaskManager() {
+        throw new IllegalStateException("Task manager is not supported by " + getClass().getSimpleName());
+    }
+
+    @Nullable
+    default DBTTaskManager getTaskManager(boolean create) {
+        return getTaskManager();
+    }
 
     /**
      * Project auth context
@@ -133,12 +133,6 @@ public interface DBPProject extends DBPObject, SMAuthSpace, DBAPermissionRealm {
     void setProjectProperty(@NotNull String propName, @Nullable Object propValue);
 
     /**
-     * Returns logical resource path
-     */
-    @NotNull
-    String getResourcePath(@NotNull IResource resource);
-
-    /**
      * Finds resources that match the supplied {@code properties} map.
      */
     @NotNull
@@ -146,6 +140,8 @@ public interface DBPProject extends DBPObject, SMAuthSpace, DBAPermissionRealm {
 
     @Nullable
     Map<String, Object> getResourceProperties(@NotNull String resourcePath);
+
+    void setResourceProperties(@NotNull String resourcePath, @NotNull Map<String, Object> newProps);
 
     @Nullable
     Object getResourceProperty(@NotNull String resourcePath, @NotNull String propName);
@@ -166,4 +162,21 @@ public interface DBPProject extends DBPObject, SMAuthSpace, DBAPermissionRealm {
      * close project and all related resources
      */
     void dispose();
+
+    /**
+     * Get the runtime property. Runtime property is a property that doesn't be stored and exists only in runtime.
+     *
+     * @param key property key
+     * @return property value
+     */
+    @Nullable
+    String getRuntimeProperty(@NotNull String key);
+
+    /**
+     * Set the runtime property.
+     *
+     * @param key   property key
+     * @param value property value
+     */
+    void setRuntimeProperty(@NotNull String key, @Nullable String value);
 }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2024 DBeaver Corp and others
+ * Copyright (C) 2010-2025 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,7 +104,12 @@ public interface DBPDataSourceContainer extends
 
     boolean isTemplate();
 
+    /**
+     * Temporary datasources are not saved in project. They exist until project refresh or application shutdown
+     */
     boolean isTemporary();
+
+    void setTemporary(boolean temporary);
 
     // We do not implement DBPHiddenObject because it is not really hidden.
     // This flag means that datasource shouldn't be included in the primary connection list.
@@ -118,8 +123,15 @@ public interface DBPDataSourceContainer extends
      */
     List<DBSSecretValue> listSharedCredentials() throws DBException;
     void setSharedCredentials(boolean sharedCredentials);
+    boolean isSharedCredentialsSelected();
+    void setSelectedSharedCredentials(@NotNull DBSSecretValue secretValue);
 
     boolean isConnectionReadOnly();
+
+    /**
+     * Updates read-only param in data source.
+     */
+    void setConnectionReadOnly(boolean connectionReadOnly);
 
     /**
      * Flag saying that password value was saved in configuration.
@@ -148,6 +160,8 @@ public interface DBPDataSourceContainer extends
 
     void setDefaultTransactionsIsolation(DBPTransactionIsolation isolationLevel);
 
+    boolean isExtraMetadataReadEnabled();
+
     /**
      * Search for object filter which corresponds specified object type and parent object.
      * Search filter which match any super class or interface implemented by specified type.
@@ -159,6 +173,11 @@ public interface DBPDataSourceContainer extends
     DBSObjectFilter getObjectFilter(Class<?> type, @Nullable DBSObject parentObject, boolean firstMatch);
 
     void setObjectFilter(Class<?> type, DBSObject parentObject, DBSObjectFilter filter);
+
+    @Nullable
+    String getClientApplicationName();
+
+    void setClientApplicationName(@NotNull String applicationName);
 
     DBVModel getVirtualModel();
 
@@ -172,6 +191,11 @@ public interface DBPDataSourceContainer extends
      * Do not check whether underlying connection is alive or not.
      */
     boolean isConnected();
+
+    /**
+     * Checks that this data source is in the connecting process
+     */
+    boolean isConnecting();
 
     /**
      * Returns last connection instantiation error if any
@@ -250,6 +274,11 @@ public interface DBPDataSourceContainer extends
      * reset all secured properties
      */
     void resetPassword();
+
+    /**
+     * Marks all secrets (credentials) as unresolved
+     */
+    void resetAllSecrets();
 
     /**
      * Make variable resolver for datasource properties.

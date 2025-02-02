@@ -18,11 +18,13 @@ package org.jkiss.dbeaver.ext.postgresql.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.postgresql.PostgreConstants;
 import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
 import org.jkiss.dbeaver.model.*;
+import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.exec.DBCAttributeMetaData;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.DBCFeatureNotSupportedException;
@@ -53,7 +55,7 @@ import java.util.*;
  * PostgreTypeType
  */
 public class PostgreDataType extends JDBCDataType<PostgreSchema> 
-    implements PostgreClass, PostgreScriptObject, DBPQualifiedObject, DBPImageProvider, DBSBindableDataType, DBPNamedObject2 {
+    implements PostgreClass, DBSDataTypeSerial, PostgreScriptObject, DBPQualifiedObject, DBPImageProvider, DBSBindableDataType, DBPNamedObject2 {
 
     private static final Log log = Log.getLog(PostgreDataType.class);
 
@@ -170,10 +172,12 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
         this.arrayDelimiter = JDBCUtils.safeGetString(dbResult, "typdelim"); //$NON-NLS-1$
         this.classId = JDBCUtils.safeGetLong(dbResult, "typrelid"); //$NON-NLS-1$
         this.elementTypeId = JDBCUtils.safeGetLong(dbResult, "typelem"); //$NON-NLS-1$
-        this.inputFunc = JDBCUtils.safeGetString(dbResult, "typinput"); //$NON-NLS-1$
-        this.outputFunc = JDBCUtils.safeGetString(dbResult, "typoutput"); //$NON-NLS-1$
-        this.receiveFunc = JDBCUtils.safeGetString(dbResult, "typreceive"); //$NON-NLS-1$
-        this.sendFunc = JDBCUtils.safeGetString(dbResult, "typsend"); //$NON-NLS-1$
+        if (getDataSource().getServerType().supportsCustomDataTypes()) {
+            this.inputFunc = JDBCUtils.safeGetString(dbResult, "typinput"); //$NON-NLS-1$
+            this.outputFunc = JDBCUtils.safeGetString(dbResult, "typoutput"); //$NON-NLS-1$
+            this.receiveFunc = JDBCUtils.safeGetString(dbResult, "typreceive"); //$NON-NLS-1$
+            this.sendFunc = JDBCUtils.safeGetString(dbResult, "typsend"); //$NON-NLS-1$
+        }
         if (getDataSource().isServerVersionAtLeast(8, 3)) {
             this.arrayItemTypeId = JDBCUtils.safeGetLong(dbResult, "typarray"); //$NON-NLS-1$
             this.modInFunc = JDBCUtils.safeGetString(dbResult, "typmodin"); //$NON-NLS-1$
@@ -259,6 +263,17 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
         attributeCache = null;
     }
 
+    @Override
+    public boolean isSerialDataType() {
+        return PostgreConstants.SERIAL_TYPES.containsKey(getFullTypeName());
+    }
+
+    @Override
+    public DBSDataType getBaseDataType() {
+        String baseTypeName = PostgreConstants.SERIAL_TYPES.get(getFullTypeName());
+        return getDataSource().getLocalDataType(baseTypeName);
+    }
+
     void resolveValueTypeFromBaseType(DBRProgressMonitor monitor) {
         if (baseTypeId > 0) {
             PostgreDataType baseType = getBaseType(monitor);
@@ -335,7 +350,7 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
                     enumValues = values.toArray();
                 }
             } catch (SQLException e) {
-                throw new DBException("Error reading enum values", e, getDataSource());
+                throw new DBDatabaseException("Error reading enum values", e, getDataSource());
             }
         }
     }
@@ -538,6 +553,9 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
         return arrayDelimiter;
     }
 
+    /**
+     * Returns array type whose element is this type
+     */
     @Property(category = CAT_ARRAY)
     public PostgreDataType getArrayItemType(DBRProgressMonitor monitor) {
         return arrayItemTypeId == 0 ? null : getDatabase().getDataType(monitor, arrayItemTypeId);
@@ -567,17 +585,19 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
     @Override
     public List<? extends DBSContextBoundAttribute> bindAttributesToContext(
         @NotNull DBRProgressMonitor monitor,
-        @NotNull DBSEntity dataContainer,
-        @NotNull DBSEntityAttribute memberContext
+        @NotNull DBDAttributeBinding memberContext
     ) throws DBException {
         List<PostgreDataTypeAttribute> attrs = this.getAttributes(monitor);
         if (attrs == null) {
             return null;
         }
-    
-        List<PostgreDataBoundTypeAttribute> boundAttrs = new ArrayList<>(attrs.size());
+
+        DBSEntityAttribute entityAttribute = memberContext.getTopParent().getEntityAttribute();
+        DBSEntity container = entityAttribute == null ? this : entityAttribute.getParentObject();
+
+        List<PostgreDataBoundTypeAttribute<?>> boundAttrs = new ArrayList<>(attrs.size());
         for (PostgreDataTypeAttribute attr : attrs) {
-            boundAttrs.add(new PostgreDataBoundTypeAttribute(monitor, (PostgreTableBase) dataContainer, memberContext, attr));
+            boundAttrs.add(new PostgreDataBoundTypeAttribute(monitor, container, memberContext, attr));
         }
         return boundAttrs;
     }

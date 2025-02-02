@@ -98,7 +98,7 @@ public class DriverLibraryLocal extends DriverLibraryAbstract {
             List<DriverDescriptor.DriverFileInfo> driverFileInfos = driver.getResolvedFiles().get(this);
             if (!CommonUtils.isEmpty(driverFileInfos) && driverFileInfos.size() == 1) {
                 DriverDescriptor.DriverFileInfo driverFileInfo = driverFileInfos.get(0);
-                resolvedCache = resolveCacheDir().resolve(driverFileInfo.getFile());
+                resolvedCache = resolveCacheDir().resolve(driverFileInfo.getFile().toString());
             } else {
                 // need to correct driver initialization, otherwise, if at least one file was copied,
                 // the driver configuration will be incorrect and other driver files will not be copied
@@ -186,6 +186,10 @@ public class DriverLibraryLocal extends DriverLibraryAbstract {
         if (file == null || !Files.exists(file)) {
             // Use custom drivers path
             file = DriverDescriptor.getCustomDriversHome().resolve(localPath);
+        }
+        if (!Files.exists(file) && (DBWorkbench.isDistributed() || DBWorkbench.getPlatform().getApplication().isMultiuser())) {
+            // driver file can be in workspace folder for multiuser applications
+            return DriverDescriptor.getWorkspaceDriversStorageFolder().resolve(localPath);
         }
         return file;
     }

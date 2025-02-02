@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.ext.hana.model;
 
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.generic.model.*;
 import org.jkiss.dbeaver.model.DBUtils;
@@ -86,7 +87,7 @@ public class HANAProcedure extends GenericProcedure {
                 }
             }
         } catch (SQLException e) {
-            throw new DBException(e, getDataSource());
+            throw new DBDatabaseException(e, getDataSource());
         }
     }
 
@@ -153,7 +154,7 @@ public class HANAProcedure extends GenericProcedure {
                 }
             }
         } catch (SQLException e) {
-            throw new DBException(e, getDataSource());
+            throw new DBDatabaseException(e, getDataSource());
         }
     }
 
@@ -162,7 +163,7 @@ public class HANAProcedure extends GenericProcedure {
         return HANADependency.readDependencies(monitor, this);
     }
 
-    @Property(hidden = true)
+    @Property(hidden = true, labelProvider = GenericCatalog.CatalogNameTermProvider.class)
     public GenericCatalog getCatalog() { return super.getCatalog(); }
 
     @Property(hidden = true)

@@ -22,7 +22,6 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.events.SelectionListener;
-import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
@@ -46,6 +45,7 @@ import org.jkiss.dbeaver.registry.DataSourceDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceNavigatorSettings;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.ui.BaseThemeSettings;
 import org.jkiss.dbeaver.ui.IHelpContextIds;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.contentassist.ContentAssistUtils;
@@ -61,6 +61,7 @@ import org.jkiss.utils.CommonUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * General connection page (common for all connection types)
@@ -101,7 +102,6 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
 
     private final List<FilterInfo> filters = new ArrayList<>();
     private Group filtersGroup;
-    private Font boldFont;
 
     ConnectionPageGeneral(ConnectionWizard wizard)
     {
@@ -146,9 +146,7 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
     }
 
     @Override
-    public void dispose()
-    {
-        UIUtils.dispose(boldFont);
+    public void dispose() {
         super.dispose();
     }
 
@@ -205,14 +203,17 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
         }
 
         long features = getWizard().getSelectedDriver().getDataSourceProvider().getFeatures();
+        boolean isFeatureCatalogOnlyNeedToApply = (features & DBPDataSourceProvider.FEATURE_CATALOGS_ONLY) != 0;
 
         for (FilterInfo filterInfo : filters) {
             if (DBSCatalog.class.isAssignableFrom(filterInfo.type)) {
-                enableFilter(filterInfo, (features & DBPDataSourceProvider.FEATURE_CATALOGS) != 0);
+                enableFilter(filterInfo,
+                    (features & DBPDataSourceProvider.FEATURE_CATALOGS) != 0 || isFeatureCatalogOnlyNeedToApply);
             } else if (DBSSchema.class.isAssignableFrom(filterInfo.type)) {
-                enableFilter(filterInfo, (features & DBPDataSourceProvider.FEATURE_SCHEMAS) != 0);
+                enableFilter(filterInfo,
+                    (features & DBPDataSourceProvider.FEATURE_SCHEMAS) != 0 && !isFeatureCatalogOnlyNeedToApply);
             } else {
-                enableFilter(filterInfo, true);
+                enableFilter(filterInfo, !isFeatureCatalogOnlyNeedToApply);
             }
         }
         filtersGroup.layout();
@@ -239,7 +240,7 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
             filterInfo.link.setText("<a>" + filterInfo.title + "</a>");
             filterInfo.link.setToolTipText(NLS.bind(CoreMessages.dialog_connection_wizard_final_filter_link_tooltip, filterInfo.title));
             if (filterInfo.filter != null && !filterInfo.filter.isNotApplicable()) {
-                filterInfo.link.setFont(boldFont);
+                filterInfo.link.setFont(BaseThemeSettings.instance.baseFontBold);
             } else {
                 filterInfo.link.setFont(getFont());
             }
@@ -287,14 +288,12 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
     }
 
     @Override
-    public void createControl(Composite parent)
-    {
-        boldFont = UIUtils.makeBoldFont(parent.getFont());
-
+    public void createControl(Composite parent) {
         if (navigatorSettings == null) {
             navigatorSettings = new DataSourceNavigatorSettings(getWizard().getSelectedNavigatorSettings());
         }
 
+        initializeDialogUnits(parent);
         Composite group = UIUtils.createComposite(parent, 1);
 
         {
@@ -402,7 +401,7 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
                         if (dialog.open() == IDialogConstants.OK_ID) {
                             filterInfo.filter = dialog.getFilter();
                             if (filterInfo.filter != null && !filterInfo.filter.isNotApplicable()) {
-                                filterInfo.link.setFont(boldFont);
+                                filterInfo.link.setFont(BaseThemeSettings.instance.baseFontBold);
                             } else {
                                 filterInfo.link.setFont(getFont());
                             }
@@ -639,7 +638,11 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
         }
 
         if (connectionTypeCombo.getSelectionIndex() >= 0) {
-            confConfig.setConnectionType(connectionTypeCombo.getSelectedItem());
+            DBPConnectionType newConnectionType = connectionTypeCombo.getSelectedItem();
+            if (!Objects.equals(newConnectionType, confConfig.getConnectionType())) {
+                // Changing connection types also changes defaults
+                confConfig.setConnectionType(newConnectionType);
+            }
         }
 
         DataSourceDescriptor dsDescriptor = (DataSourceDescriptor) dataSource;

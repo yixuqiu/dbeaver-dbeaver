@@ -105,6 +105,9 @@ public interface DBPDriver extends DBPNamedObject
     @Nullable
     String getPropertiesWebURL();
 
+    @Nullable
+    String getDatabaseDocumentationSuffixURL();
+
     @NotNull
     SQLDialectMetadata getScriptDialect();
 
@@ -121,8 +124,11 @@ public interface DBPDriver extends DBPNamedObject
     boolean isSampleURLApplicable();
     boolean isCustomEndpointInformation();
 
+    // Check that driver needs only on connection for all operations
     boolean isSingleConnection();
-    
+    // Check that driver is thread safe (default mode)
+    boolean isThreadSafeDriver();
+
     // Can be created
     boolean isInstantiable();
     // Driver shipped along with JDK/DBeaver, doesn't need any additional libraries. Basically it is ODBC driver.
@@ -156,6 +162,9 @@ public interface DBPDriver extends DBPNamedObject
 
     @Nullable
     DBXTreeNode getNavigatorRoot();
+
+    @NotNull
+    DBPPropertyDescriptor[] getMainPropertyDescriptors();
 
     @NotNull
     DBPPropertyDescriptor[] getProviderPropertyDescriptors();
@@ -195,6 +204,9 @@ public interface DBPDriver extends DBPNamedObject
     @NotNull
     List<? extends DBPDriverFileSource> getDriverFileSources();
 
+    /**
+     * Flag that shows if a driver needs external dependencies (f.e. not all files are present).
+     */
     boolean needsExternalDependencies();
 
     @NotNull
@@ -232,7 +244,23 @@ public interface DBPDriver extends DBPNamedObject
     }
 
     /**
-     * download all required driver jar files without creating a driver instance
+     * Validates driver library files presence and download them if needed without creating a driver instance
      */
-    void downloadRequiredDependencies(@NotNull DBRProgressMonitor monitor);
+    void validateFilesPresence(@NotNull DBRProgressMonitor monitor);
+
+
+    /**
+     * Indicates whether the driver library files are installed.
+     */
+    boolean isDriverInstalled();
+
+    /**
+     * Downloads driver library files from external resources if it is possible.
+     */
+    boolean downloadDriverLibraries(@NotNull DBRProgressMonitor monitor, boolean resetVersions);
+
+    /**
+     * Compare driverId to this driver and its replacements
+     */
+    boolean matchesId(@NotNull String driverId);
 }

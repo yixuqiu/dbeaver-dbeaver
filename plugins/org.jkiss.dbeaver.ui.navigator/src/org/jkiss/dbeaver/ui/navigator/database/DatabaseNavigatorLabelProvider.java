@@ -16,7 +16,6 @@
  */
 package org.jkiss.dbeaver.ui.navigator.database;
 
-import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.viewers.*;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
@@ -25,8 +24,6 @@ import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Text;
-import org.eclipse.ui.PlatformUI;
-import org.eclipse.ui.themes.ITheme;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
@@ -37,7 +34,9 @@ import org.jkiss.dbeaver.model.navigator.DBNResource;
 import org.jkiss.dbeaver.model.navigator.DBNUtils;
 import org.jkiss.dbeaver.model.struct.DBSWrapper;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.ui.BaseThemeSettings;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
+import org.jkiss.dbeaver.ui.UIFonts;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.internal.UINavigatorMessages;
 import org.jkiss.dbeaver.ui.navigator.NavigatorPreferences;
@@ -50,46 +49,37 @@ import java.util.StringJoiner;
 /**
  * DatabaseNavigatorLabelProvider
 */
-public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implements IFontProvider, IColorProvider
-{
-    public static final String TREE_TABLE_FONT = "org.eclipse.ui.workbench.TREE_TABLE_FONT";
+public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implements IFontProvider, IColorProvider {
 
-    private final IPropertyChangeListener themeChangeListener;
-
-    protected Font normalFont;
-    protected Font boldFont;
-    protected Font italicFont;
-    //private Font boldItalicFont;
     protected Color lockedForeground;
-    protected Color transientForeground;
     private ILabelDecorator labelDecorator;
 
     public DatabaseNavigatorLabelProvider(@NotNull DatabaseNavigatorTree tree) {
         this.lockedForeground = Display.getDefault().getSystemColor(SWT.COLOR_DARK_GRAY);
-        this.transientForeground = Display.getDefault().getSystemColor(SWT.COLOR_DARK_RED);
-        this.themeChangeListener = e -> {
-            final ITheme theme = PlatformUI.getWorkbench().getThemeManager().getCurrentTheme();
-            normalFont = theme.getFontRegistry().get(TREE_TABLE_FONT);
-            boldFont = theme.getFontRegistry().getBold(TREE_TABLE_FONT);
-            italicFont = theme.getFontRegistry().getItalic(TREE_TABLE_FONT);
 
-            final TreeViewer viewer = tree.getViewer();
-            viewer.getControl().setFont(normalFont);
-            viewer.refresh();
+        BaseThemeSettings.instance.addPropertyListener(
+            UIFonts.DBEAVER_FONTS_MAIN_FONT,
+            s -> setNavigatorFont(tree),
+            tree);
 
-            final Text filter = tree.getFilterControl();
-            if (filter != null) {
-                filter.setFont(normalFont);
-            }
-        };
-        this.themeChangeListener.propertyChange(null);
+        setNavigatorFont(tree);
+    }
 
-        PlatformUI.getWorkbench().getThemeManager().addPropertyChangeListener(themeChangeListener);
+    private static void setNavigatorFont(@NotNull DatabaseNavigatorTree tree) {
+        Font normalFont = BaseThemeSettings.instance.baseFont;
+
+        final TreeViewer viewer = tree.getViewer();
+        viewer.getControl().setFont(normalFont);
+        viewer.refresh();
+
+        final Text filter = tree.getFilterControl();
+        if (filter != null) {
+            filter.setFont(normalFont);
+        }
     }
 
     @Override
     public void dispose() {
-        PlatformUI.getWorkbench().getThemeManager().removePropertyChangeListener(themeChangeListener);
         super.dispose();
     }
 
@@ -102,19 +92,14 @@ public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implemen
     }
 
     @Override
-    public String getText(Object obj)
-    {
+    public String getText(Object obj) {
         String text = null;
-        if (obj instanceof ILabelProvider) {
-            text = ((ILabelProvider)obj).getText(obj);
-/*
-        } else if (obj instanceof DBSObject) {
-            text = ((DBSObject) obj).getName();
-*/
-        } else if (obj instanceof DBNNode) {
-            text = ((DBNNode) obj).getNodeDisplayName();
+        if (obj instanceof ILabelProvider labelProvider) {
+            text = labelProvider.getText(obj);
+        } else if (obj instanceof DBNNode dbnNode) {
+            text = dbnNode.getNodeDisplayName();
             if (DBWorkbench.getPlatform().getPreferenceStore().getBoolean(NavigatorPreferences.NAVIGATOR_SHOW_OBJECT_TIPS)) {
-                String briefInfo = ((DBNNode) obj).getNodeBriefInfo();
+                String briefInfo = dbnNode.getNodeBriefInfo();
                 if (!CommonUtils.isEmpty(briefInfo)) {
                     text += " (" + briefInfo + ")";
                 }
@@ -132,11 +117,10 @@ public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implemen
     }
 
     @Override
-    public Image getImage(Object obj)
-    {
+    public Image getImage(Object obj) {
         Image image = null;
-        if (obj instanceof ILabelProvider) {
-            image = ((ILabelProvider)obj).getImage(obj);
+        if (obj instanceof ILabelProvider labelProvider) {
+            image = labelProvider.getImage(obj);
         } else if (obj instanceof DBNNode) {
             image = DBeaverIcons.getImage(((DBNNode) obj).getNodeIconDefault());
         }
@@ -148,36 +132,33 @@ public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implemen
     }
 
     @Override
-    public Font getFont(Object element)
-    {
+    public Font getFont(Object element) {
         if (DBNUtils.isDefaultElement(element)) {
-            return boldFont;
+            return BaseThemeSettings.instance.baseFontBold;
         } else {
-            if (element instanceof DBNDataSource) {
-                final DBPDataSourceContainer ds = ((DBNDataSource) element).getDataSourceContainer();
+            if (element instanceof DBNDataSource dbnDataSource) {
+                final DBPDataSourceContainer ds = dbnDataSource.getDataSourceContainer();
                 if (ds != null && (ds.isProvided() || ds.isTemporary())) {
-                    return italicFont;
+                    return BaseThemeSettings.instance.baseFontItalic;
                 }
             }
-            return normalFont;
+            return BaseThemeSettings.instance.baseFont;
         }
     }
 
     @Override
-    public Color getForeground(Object element)
-    {
-        if (element instanceof DBNNode) {
-            DBNNode node = (DBNNode)element;
-            if (node instanceof DBNDataSource) {
-                DBPDataSourceContainer ds = ((DBNDataSource) element).getDataSourceContainer();
+    public Color getForeground(Object element) {
+        if (element instanceof DBNNode dbnNode)  {
+            if (dbnNode instanceof DBNDataSource dbnDataSource) {
+                DBPDataSourceContainer ds = dbnDataSource.getDataSourceContainer();
                 Color bgColor = UIUtils.getConnectionColor(ds.getConnectionConfiguration());
                 return bgColor == null ? null : UIUtils.getContrastColor(bgColor);
             }
-            if (node.isLocked()) {
+            if (dbnNode.isLocked()) {
                 return lockedForeground;
             }
-            if (node instanceof DBSWrapper && ((DBSWrapper)node).getObject() != null && !((DBSWrapper)node).getObject().isPersisted()) {
-                return transientForeground;
+            if (dbnNode instanceof DBSWrapper dbsWrapper && dbsWrapper.getObject() != null && !dbsWrapper.getObject().isPersisted()) {
+                return NavigatorThemeSettings.instance.transientForeground;
             }
         }
         if (element instanceof TreeNodeSpecial) {
@@ -187,10 +168,9 @@ public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implemen
     }
 
     @Override
-    public Color getBackground(Object element)
-    {
-        if (element instanceof DBNDataSource) {
-            DBPDataSourceContainer ds = ((DBNDataSource) element).getDataSourceContainer();
+    public Color getBackground(Object element) {
+        if (element instanceof DBNDataSource dbnDataSource) {
+            DBPDataSourceContainer ds = dbnDataSource.getDataSourceContainer();
             if (ds != null) {
                 return UIUtils.getConnectionColor(ds.getConnectionConfiguration());
             }
@@ -198,8 +178,7 @@ public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implemen
         return null;
     }
 
-    private boolean isFilteredElement(Object element)
-    {
+    private boolean isFilteredElement(Object element) {
         return element instanceof DBNNode && ((DBNNode) element).isFiltered();
     }
 
@@ -208,8 +187,8 @@ public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implemen
         if (!DBWorkbench.getPlatform().getPreferenceStore().getBoolean(NavigatorPreferences.NAVIGATOR_SHOW_TOOLTIPS)) {
             return null;
         }
-        if (element instanceof DBNDataSource) {
-            final DBPDataSourceContainer ds = ((DBNDataSource) element).getDataSourceContainer();
+        if (element instanceof DBNDataSource dbnDataSource) {
+            final DBPDataSourceContainer ds = dbnDataSource.getDataSourceContainer();
             if (ds != null) {
                 StringJoiner tooltip = new StringJoiner("\n");
                 tooltip.add(NLS.bind(UINavigatorMessages.navigator_provider_element_tooltip_datasource_name, ds.getName()));
@@ -253,8 +232,8 @@ public class DatabaseNavigatorLabelProvider extends ColumnLabelProvider implemen
             }
         } else if (element instanceof DBNNode) {
             if (element instanceof DBNResource &&
-                !DBWorkbench.getPlatform().getPreferenceStore().getBoolean(NavigatorPreferences.NAVIGATOR_SHOW_CONTENTS_IN_TOOLTIP))
-            {
+                !DBWorkbench.getPlatform().getPreferenceStore().getBoolean(NavigatorPreferences.NAVIGATOR_SHOW_CONTENTS_IN_TOOLTIP)
+            ) {
                 return null;
             }
             final String description = ((DBNNode) element).getNodeDescription();

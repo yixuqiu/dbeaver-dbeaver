@@ -16,7 +16,7 @@
  */
 package org.jkiss.dbeaver.tools.compare.simple.ui.internal;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class CompareUIMessages extends NLS {
 
@@ -34,7 +34,7 @@ public class CompareUIMessages extends NLS {
     public static String compare_objects_page_settings_nodes_column_full_name;
     public static String compare_objects_page_settings_group_settings;
     public static String compare_objects_page_settings_checkbox_skip_objects;
-    public static String compare_objects_page_settings_checkbox_compare_preporties;
+    public static String compare_objects_page_settings_checkbox_compare_properties;
     public static String compare_objects_page_settings_checkbox_compare_structure;
     public static String compare_objects_page_settings_checkbox_scripts;
     public static String compare_objects_page_checkbox_show_only_differences;

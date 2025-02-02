@@ -21,18 +21,18 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Plugin;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBPExternalFileManager;
 import org.jkiss.dbeaver.model.app.*;
+import org.jkiss.dbeaver.model.impl.app.BaseApplicationImpl;
 import org.jkiss.dbeaver.model.impl.app.DefaultCertificateStorage;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.qm.QMRegistry;
 import org.jkiss.dbeaver.model.qm.QMUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.dbeaver.registry.BaseApplicationImpl;
 import org.jkiss.dbeaver.registry.BasePlatformImpl;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.registry.GlobalEventManagerImpl;
-import org.jkiss.dbeaver.registry.formatter.DataFormatterRegistry;
 import org.jkiss.dbeaver.registry.language.PlatformLanguageRegistry;
 import org.jkiss.dbeaver.runtime.qm.QMRegistryImpl;
 import org.jkiss.dbeaver.utils.ContentUtils;
@@ -90,7 +90,7 @@ public class DBeaverTestPlatform extends BasePlatformImpl implements DBPPlatform
         log.debug("Initialize Test Platform...");
 
         this.defaultCertificateStorage = new DefaultCertificateStorage(
-            DBeaverTestActivator.getConfigurationFile("cert-storage").toPath());
+            DBeaverTestActivator.getConfigurationFile(DBConstants.CERTIFICATE_STORAGE_FOLDER).toPath());
 
         // Register properties adapter
         this.workspace = new DBeaverTestWorkspace(this, ResourcesPlugin.getWorkspace());
@@ -162,12 +162,6 @@ public class DBeaverTestPlatform extends BasePlatformImpl implements DBPPlatform
 
     @NotNull
     @Override
-    public DBPDataFormatterRegistry getDataFormatterRegistry() {
-        return DataFormatterRegistry.getInstance();
-    }
-
-    @NotNull
-    @Override
     public DBPPreferenceStore getPreferenceStore() {
         return getApplication().getPreferenceStore();
     }
@@ -225,4 +219,8 @@ public class DBeaverTestPlatform extends BasePlatformImpl implements DBPPlatform
         return isClosing();
     }
 
+    @Override
+    public boolean isUnitTestMode() {
+        return true;
+    }
 }

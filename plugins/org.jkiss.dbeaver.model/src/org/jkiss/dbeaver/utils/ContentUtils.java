@@ -39,6 +39,7 @@ import java.text.NumberFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Stream;
 
 /**
  * Content manipulation utilities
@@ -238,6 +239,18 @@ public class ContentUtils {
         return true;
     }
 
+    public static boolean isAsciiText(@Nullable byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return false;
+        }
+        for (byte b : bytes) {
+            if (b < ' ' || '~' < b) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static boolean isXML(DBDContent content) {
         return MimeTypes.TEXT_XML.equalsIgnoreCase(content.getContentType());
     }
@@ -335,8 +348,8 @@ public class ContentUtils {
 
     public static boolean deleteFileRecursive(Path file) {
         if (Files.isDirectory(file)) {
-            try {
-                List<Path> files = Files.list(file).toList();
+            try (Stream<Path> list = Files.list(file)) {
+                List<Path> files = list.toList();
                 for (Path ch : files) {
                     if (!deleteFileRecursive(ch)) {
                         return false;

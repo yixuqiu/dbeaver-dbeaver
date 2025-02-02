@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.generic.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.generic.GenericConstants;
 import org.jkiss.dbeaver.ext.generic.model.meta.GenericMetaObject;
@@ -84,13 +85,13 @@ public class GenericProcedure extends AbstractProcedure<GenericDataSource, Gener
         this.source = source;
     }
 
-    @Property(viewable = true, order = 3)
+    @Property(viewable = true, order = 3, labelProvider = GenericCatalog.CatalogNameTermProvider.class)
     public GenericCatalog getCatalog()
     {
         return getContainer().getCatalog();
     }
 
-    @Property(viewable = true, order = 4)
+    @Property(viewable = true, labelProvider = GenericSchema.SchemaNameTermProvider.class, order = 4)
     public GenericSchema getSchema()
     {
         return getContainer().getSchema();
@@ -251,7 +252,7 @@ public class GenericProcedure extends AbstractProcedure<GenericDataSource, Gener
                 dbResult.close();
             }
         } catch (SQLException e) {
-            throw new DBException(e, getDataSource());
+            throw new DBDatabaseException(e, getDataSource());
         }
 
     }

@@ -26,11 +26,12 @@ import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBeaverPreferences;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
+import org.jkiss.dbeaver.model.app.DBPWorkspace;
 import org.jkiss.dbeaver.model.impl.preferences.BundlePreferenceStore;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.runtime.features.DBRFeatureRegistry;
 import org.jkiss.dbeaver.ui.browser.BrowsePeerMethods;
-import org.jkiss.dbeaver.utils.GeneralUtils;
+import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.ArrayUtils;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
@@ -41,9 +42,15 @@ import java.io.PrintStream;
 import java.io.Reader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.nio.file.*;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.*;
+import java.util.MissingResourceException;
+import java.util.Properties;
+import java.util.ResourceBundle;
+import java.util.Set;
 
 /**
  * The activator class controls the plug-in life cycle
@@ -154,8 +161,6 @@ public class DBeaverActivator extends AbstractUIPlugin {
         this.shutdownUI();
         this.shutdownCore();
 
-        DBRFeatureRegistry.getInstance().endTracking();
-
         if (debugWriter != null) {
             debugWriter.close();
             debugWriter = null;
@@ -203,7 +208,15 @@ public class DBeaverActivator extends AbstractUIPlugin {
     }
 
     private void resetSettingsStartupActions(@NotNull Location instanceLoc) {
-        final Path path = GeneralUtils.getMetadataFolder().resolve(STARTUP_ACTIONS_FILE);
+        Path path;
+        try {
+            path = RuntimeUtils.getLocalPathFromURL(Platform.getInstanceLocation().getURL())
+                .resolve(DBPWorkspace.METADATA_FOLDER)
+                .resolve(STARTUP_ACTIONS_FILE);
+        } catch (Exception e) {
+            return;
+        }
+
         if (Files.notExists(path)) {
             return;
         }
@@ -213,7 +226,7 @@ public class DBeaverActivator extends AbstractUIPlugin {
             properties.load(reader);
 
             if (!properties.isEmpty()) {
-                processResetSettings(instanceLoc, properties.stringPropertyNames());
+                processResetSettings(instanceLoc, path, properties.stringPropertyNames());
             }
         } catch (Exception e) {
             log.error("Unable to read startup actions", e);
@@ -225,14 +238,19 @@ public class DBeaverActivator extends AbstractUIPlugin {
             }
         }
     }
-    private void processResetSettings(@NotNull Location instanceLoc, @NotNull Set<String> actions) throws Exception {
+
+    private void processResetSettings(
+        @NotNull Location instanceLoc,
+        @NotNull Path instancePath,
+        @NotNull Set<String> actions
+    ) throws Exception {
         final boolean resetUserPreferences = actions.contains(RESET_USER_PREFERENCES);
         final boolean resetWorkspaceConfiguration = actions.contains(RESET_WORKSPACE_CONFIGURATION);
 
         if (!resetUserPreferences && !resetWorkspaceConfiguration || !instanceLoc.isSet()) {
             return;
         }
-        Path path = GeneralUtils.getMetadataFolder().resolve(PLUGINS_FOLDER);
+        Path path = instancePath.resolve(PLUGINS_FOLDER);
         if (Files.notExists(path) || !Files.isDirectory(path)) {
             return;
         }

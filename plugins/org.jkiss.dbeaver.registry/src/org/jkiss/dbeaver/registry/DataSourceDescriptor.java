@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2024 DBeaver Corp and others
+ * Copyright (C) 2010-2025 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -181,6 +181,7 @@ public class DataSourceDescriptor
     private transient DBWNetworkHandler proxyHandler;
     private transient DBWTunnel tunnelHandler;
     private final List<DBPDataSourceTask> users = new ArrayList<>();
+    private transient String clientApplicationName;
     // DPI controller
     private transient DPIProcessController dpiController;
 
@@ -473,6 +474,7 @@ public class DataSourceDescriptor
         return connectionReadOnly;
     }
 
+    @Override
     public void setConnectionReadOnly(boolean connectionReadOnly) {
         this.connectionReadOnly = connectionReadOnly;
     }
@@ -527,11 +529,16 @@ public class DataSourceDescriptor
         }
     }
 
-    public void forgetSecrets() {
+    public void resetAllSecrets() {
         this.secretsResolved = false;
         this.secretsContainsDatabaseCreds = false;
         this.availableSharedCredentials = null;
         this.selectedSharedCredentials = null;
+        if (sharedCredentials) {
+            // For shared credentials reset cache also
+            connectionInfo.setUserName(null);
+            connectionInfo.setUserPassword(null);
+        }
     }
 
     @Nullable
@@ -568,6 +575,11 @@ public class DataSourceDescriptor
         }
     }
 
+    @Override
+    public boolean isExtraMetadataReadEnabled() {
+        return !preferenceStore.getBoolean(ModelPreferences.META_DISABLE_EXTRA_READ);
+    }
+
     public Collection<FilterMapping> getObjectFilters() {
         return filterMap.values();
     }
@@ -587,14 +599,15 @@ public class DataSourceDescriptor
         if (filterMap.isEmpty()) {
             return null;
         }
-        // Test all super classes
-        for (Class<?> testType = type; testType != null; testType = testType.getSuperclass()) {
+        // Test all interfaces
+        for (Class<?> testType : type.getInterfaces()) {
             FilterMapping filterMapping = getTypeFilterMapping(parentObject, firstMatch, testType);
             if (filterMapping != null) {
                 return filterMapping;
             }
         }
-        for (Class<?> testType : type.getInterfaces()) {
+        // Test all super classes
+        for (Class<?> testType = type; testType != null; testType = testType.getSuperclass()) {
             FilterMapping filterMapping = getTypeFilterMapping(parentObject, firstMatch, testType);
             if (filterMapping != null) {
                 return filterMapping;
@@ -639,6 +652,17 @@ public class DataSourceDescriptor
         }
 
         updateObjectFilter(type.getName(), parentObject == null ? null : FilterMapping.getFilterContainerUniqueID(parentObject), filter);
+    }
+
+    @Nullable
+    @Override
+    public String getClientApplicationName() {
+        return this.clientApplicationName;
+    }
+
+    @Override
+    public void setClientApplicationName(@NotNull String applicationName) {
+        this.clientApplicationName = applicationName;
     }
 
     void clearFilters() {
@@ -749,6 +773,7 @@ public class DataSourceDescriptor
         return temporary;
     }
 
+    @Override
     public void setTemporary(boolean temporary) {
         this.temporary = temporary;
     }
@@ -895,6 +920,7 @@ public class DataSourceDescriptor
         persistSecrets(secretController, false);
     }
 
+    //TODO move secret management logic to separate service
     void persistSecrets(DBSSecretController secretController, boolean isNewDataSource) throws DBException {
         if (!CommonUtils.isBitSet(
             secretController.getSupportedFeatures(),
@@ -916,11 +942,15 @@ public class DataSourceDescriptor
         } else {
             if (selectedSharedCredentials != null) {
                 String subjectId = DataSourceUtils.getSubjectFromSecret(selectedSharedCredentials);
+                var selectedSharedCredentialsCopy = selectedSharedCredentials;
+                selectedSharedCredentialsCopy.setValue(secret);
                 try {
                     secretController.setSubjectSecretValue(subjectId, this,
                         new DBSSecretValue(subjectId, getSecretValueId(), "", secret));
                     //the list of available secrets has changed, force update
-                    forgetSecrets();
+                    resetAllSecrets();
+                    // to resave current secret without additional click in UI
+                    setSelectedSharedCredentials(selectedSharedCredentialsCopy);
                 } catch (DBException e) {
                     throw new DBException("Cannot set team '" + subjectId + "' credentials: " + e.getMessage(), e);
                 }
@@ -937,7 +967,7 @@ public class DataSourceDescriptor
         if (!isSharedCredentials()) {
             return List.of();
         }
-        forgetSecrets();
+        resetAllSecrets();
         resolveSecretsIfNeeded();
         if (availableSharedCredentials == null) {
             this.availableSharedCredentials = List.of();
@@ -960,11 +990,13 @@ public class DataSourceDescriptor
         return selectedSharedCredentials;
     }
 
+    @Override
     public synchronized void setSelectedSharedCredentials(@NotNull DBSSecretValue secretValue) {
         this.selectedSharedCredentials = secretValue;
         loadFromSecret(this.selectedSharedCredentials.getValue());
     }
 
+    @Override
     public synchronized boolean isSharedCredentialsSelected() {
         return selectedSharedCredentials != null;
     }
@@ -975,32 +1007,32 @@ public class DataSourceDescriptor
 
     @Override
     public void resolveSecrets(DBSSecretController secretController) throws DBException {
-        try {
-            if (!isSharedCredentials()) {
-                // try to load private user credentials
-                String secretValue = secretController.getPrivateSecretValue(getSecretValueId());
-                loadFromSecret(secretValue);
-                if (secretValue == null && !DBWorkbench.isDistributed()) {
-                    // Backward compatibility
-                    loadFromLegacySecret(secretController);
-                }
-            } else {
-                this.availableSharedCredentials = secretController.discoverCurrentUserSecrets(this);
-                if (this.availableSharedCredentials.size() == 1) {
-                    setSelectedSharedCredentials(availableSharedCredentials.get(0));
-                }
+        if (!isSharedCredentials()) {
+            // try to load private user credentials
+            String secretValue = secretController.getPrivateSecretValue(getSecretValueId());
+            loadFromSecret(secretValue);
+            if (secretValue == null && !DBWorkbench.isDistributed()) {
+                // Backward compatibility
+                loadFromLegacySecret(secretController);
             }
-        } finally {
-            // we always consider the secret to be resolved,
-            // because in case of an error during the resolve,
-            // we will not be able to save the new secret, look at #persistSecretIfNeeded
-            this.secretsResolved = true;
+        } else {
+            this.availableSharedCredentials = secretController.discoverCurrentUserSecrets(this);
+            if (this.availableSharedCredentials.size() == 1) {
+                setSelectedSharedCredentials(availableSharedCredentials.get(0));
+            }
         }
+
+        secretsResolved = true;
     }
 
     @Override
     public boolean isConnected() {
         return dataSource != null && !connecting;
+    }
+
+    @Override
+    public boolean isConnecting() {
+        return connecting;
     }
 
     @Nullable
@@ -1023,14 +1055,24 @@ public class DataSourceDescriptor
         boolean succeeded = false;
         connecting = true;
         try {
-            getDriver().downloadRequiredDependencies(monitor);
+            getDriver().validateFilesPresence(monitor);
             if (isDetachedProcessEnabled() && !detachedProcess) {
                 // Open detached connection
                 succeeded = openDetachedConnection(monitor);
             }
             if (!succeeded) {
-                // Open local connection
-                succeeded = connect0(monitor, initialize, reflect);
+                if (!detachedProcess) {
+                    updateDataSourceObject(succeeded, DBPEvent.Action.BEFORE_CONNECT);
+                }
+
+                try {
+                    // Open local connection
+                    succeeded = connect0(monitor, initialize, reflect);
+                } finally {
+                    if (!detachedProcess) {
+                        updateDataSourceObject(succeeded, DBPEvent.Action.AFTER_CONNECT);
+                    }
+                }
             }
 
             return succeeded;
@@ -1039,7 +1081,7 @@ public class DataSourceDescriptor
             connecting = false;
 
             if (!detachedProcess) {
-                updateDataSourceObject(this, succeeded);
+                updateDataSourceObject(succeeded, DBPEvent.Action.OBJECT_UPDATE);
             }
         }
     }
@@ -1108,13 +1150,8 @@ public class DataSourceDescriptor
     }
 
     private boolean connect0(DBRProgressMonitor monitor, boolean initialize, boolean reflect) throws DBException {
-        DBSSecretController secretController = null;
-
         log.debug("Connect with '" + getName() + "' (" + getId() + ")");
-        if (getProject().isUseSecretStorage()) {
-            // Resolve secrets
-            secretController = DBSSecretController.getProjectSecretController(getProject());
-        }
+
         resolveSecretsIfNeeded();
 
         if (isSharedCredentials() && !isSharedCredentialsSelected()) {
@@ -1129,7 +1166,7 @@ public class DataSourceDescriptor
         }
 
         resolvedConnectionInfo = new DBPConnectionConfiguration(connectionInfo);
-
+        patchConnectionProperties(monitor, resolvedConnectionInfo);
         // Update auth properties if possible
         lastConnectionError = null;
         try {
@@ -1171,7 +1208,7 @@ public class DataSourceDescriptor
                 }
             }
 
-            resolveConnectVariables(secretController);
+            resolvePropertiesFromProfile();
 
             // Handle tunnelHandler
             // Open tunnelHandler and replace connection info with new one
@@ -1257,6 +1294,7 @@ public class DataSourceDescriptor
 
             return true;
         } catch (Throwable e) {
+            terminateChildProcesses();
             lastConnectionError = e.getMessage();
             //log.debug("Connection failed (" + getId() + ")", e);
             if (dataSource != null) {
@@ -1279,7 +1317,7 @@ public class DataSourceDescriptor
                 }
             }
             if (isSharedCredentials()) {
-                this.forgetSecrets();
+                this.resetAllSecrets();
             }
             proxyHandler = null;
             // Failed
@@ -1294,34 +1332,53 @@ public class DataSourceDescriptor
         }
     }
 
-    private void resolveConnectVariables(DBSSecretController secretController) throws DBException {
-        // Resolve variables
-        if (preferenceStore.getBoolean(ModelPreferences.CONNECT_USE_ENV_VARS) ||
-            !CommonUtils.isEmpty(resolvedConnectionInfo.getConfigProfileName())) {
+
+    protected void patchConnectionProperties(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBPConnectionConfiguration resolvedConnectionInfo
+    ) throws DBException {
+
+    }
+
+    private void terminateChildProcesses() {
+        synchronized (childProcesses) {
+            for (Iterator<DBRProcessDescriptor> iter = childProcesses.iterator(); iter.hasNext(); ) {
+                DBRProcessDescriptor process = iter.next();
+                if (process.isRunning() && process.getCommand().isTerminateAtDisconnect()) {
+                    process.terminate();
+                }
+                iter.remove();
+            }
+        }
+    }
+
+    private void resolvePropertiesFromProfile() throws DBException {
+        DBSSecretController secretController = getProject().isUseSecretStorage() ?
+            DBSSecretController.getProjectSecretController(getProject()) : null;
+        // Update config from profile
+        if (!CommonUtils.isEmpty(resolvedConnectionInfo.getConfigProfileName())) {
             // Update config from profile
-            if (!CommonUtils.isEmpty(resolvedConnectionInfo.getConfigProfileName())) {
-                // Update config from profile
-                DBWNetworkProfile profile = registry.getNetworkProfile(
-                    resolvedConnectionInfo.getConfigProfileSource(),
-                    resolvedConnectionInfo.getConfigProfileName());
-                if (profile != null) {
-                    if (secretController != null) {
-                        profile.resolveSecrets(secretController);
-                    }
-                    for (DBWHandlerConfiguration handlerCfg : profile.getConfigurations()) {
-                        if (handlerCfg.isEnabled()) {
-                            resolvedConnectionInfo.updateHandler(new DBWHandlerConfiguration(handlerCfg));
-                        }
+            DBWNetworkProfile profile = registry.getNetworkProfile(
+                resolvedConnectionInfo.getConfigProfileSource(),
+                resolvedConnectionInfo.getConfigProfileName());
+            if (profile != null) {
+                if (secretController != null) {
+                    profile.resolveSecrets(secretController);
+                }
+                for (DBWHandlerConfiguration handlerCfg : profile.getConfigurations()) {
+                    if (handlerCfg.isEnabled()) {
+                        resolvedConnectionInfo.updateHandler(new DBWHandlerConfiguration(handlerCfg));
                     }
                 }
             }
-            // Process variables
-            if (preferenceStore.getBoolean(ModelPreferences.CONNECT_USE_ENV_VARS)) {
-                IVariableResolver variableResolver = new DataSourceVariableResolver(
-                    this, this.resolvedConnectionInfo);
-                this.resolvedConnectionInfo.resolveDynamicVariables(variableResolver);
-            }
         }
+        // Process variables
+        if (preferenceStore.getBoolean(ModelPreferences.CONNECT_USE_ENV_VARS)) {
+            IVariableResolver variableResolver = new DataSourceVariableResolver(
+                this, this.resolvedConnectionInfo);
+            this.resolvedConnectionInfo.resolveDynamicVariables(variableResolver);
+        }
+
     }
 
     private void resolveSecretsIfNeeded() throws DBException {
@@ -1334,12 +1391,6 @@ public class DataSourceDescriptor
         }
         var secretController = DBSSecretController.getProjectSecretController(getProject());
         resolveSecrets(secretController);
-    }
-
-    public void refreshSecretFromConfiguration() {
-        if (selectedSharedCredentials != null) {
-            selectedSharedCredentials.setValue(saveToSecret());
-        }
     }
 
     public void openDataSource(DBRProgressMonitor monitor, boolean initialize) throws DBException {
@@ -1374,8 +1425,12 @@ public class DataSourceDescriptor
             try (DBCSession session = DBUtils.openMetaSession(monitor, this, "Read server information")) {
                 DBCTransactionManager txnManager = DBUtils.getTransactionManager(session.getExecutionContext());
                 if (txnManager != null && !txnManager.isAutoCommit()) {
-                    txnManager.setAutoCommit(monitor, true);
-                    revertMetaToManualCommit = true;
+                    try {
+                        txnManager.setAutoCommit(monitor, true);
+                        revertMetaToManualCommit = true;
+                    } catch (Throwable e) {
+                        log.debug("Cannot set auto-commit flag: " + e.getMessage());
+                    }
                 }
 
                 try {
@@ -1519,29 +1574,18 @@ public class DataSourceDescriptor
             return false;
         } finally {
             // Terminate child processes
-            synchronized (childProcesses) {
-                for (Iterator<DBRProcessDescriptor> iter = childProcesses.iterator(); iter.hasNext(); ) {
-                    DBRProcessDescriptor process = iter.next();
-                    if (process.isRunning() && process.getCommand().isTerminateAtDisconnect()) {
-                        process.terminate();
-                    }
-                    iter.remove();
-                }
-            }
+            terminateChildProcesses();
 
             this.dataSource = null;
             this.resolvedConnectionInfo = null;
             // Reset resolved secrets
-            forgetSecrets();
+            resetAllSecrets();
 
             this.connectTime = null;
 
             if (reflect) {
                 // Reflect UI
-                getRegistry().notifyDataSourceListeners(new DBPEvent(
-                    DBPEvent.Action.OBJECT_UPDATE,
-                    this,
-                    false));
+                updateDataSourceObject(false, DBPEvent.Action.OBJECT_UPDATE);
             }
 
             connecting = false;
@@ -2105,21 +2149,25 @@ public class DataSourceDescriptor
         boolean canSavePassword)
     {
         DBPAuthInfo authInfo;
-        authInfo = DBWorkbench.getPlatformUI().promptUserCredentials(prompt,
-            RegistryMessages.dialog_connection_auth_username, user,
+        authInfo = DBWorkbench.getPlatformUI().promptUserCredentials(
+            prompt,
+            null,
+            RegistryMessages.dialog_connection_auth_username,
+            user,
             authType == DBWTunnel.AuthCredentials.PASSWORD
                 ? RegistryMessages.dialog_connection_auth_passphrase
-                : RegistryMessages.dialog_connection_auth_password, password,
+                : RegistryMessages.dialog_connection_auth_password,
+            password,
             false,
             canSavePassword
         );
         return authInfo;
     }
 
-    public void updateDataSourceObject(DataSourceDescriptor dataSourceDescriptor, boolean succeeded) {
+    private void updateDataSourceObject(boolean succeeded, DBPEvent.Action action) {
         getRegistry().notifyDataSourceListeners(new DBPEvent(
-            DBPEvent.Action.OBJECT_UPDATE,
-            dataSourceDescriptor,
+            action,
+            this,
             succeeded));
     }
 
@@ -2152,14 +2200,21 @@ public class DataSourceDescriptor
         }
 
         //do not store handlers in secret for shared connections
-        if (!isSharedCredentials() && CommonUtils.isEmpty(connectionInfo.getConfigProfileName())) {
+        if (!isSharedCredentials()) {
             // Handlers. If config profile is set then props are saved there
+            DBWNetworkProfile activeProfile = CommonUtils.isEmpty(connectionInfo.getConfigProfileName())
+                ? null
+                : this.getRegistry().getNetworkProfile(connectionInfo.getConfigProfileSource(), connectionInfo.getConfigProfileName());
+
             List<Map<String, Object>> handlersConfigs = new ArrayList<>();
             for (DBWHandlerConfiguration hc : connectionInfo.getHandlers()) {
-                Map<String, Object> handlerProps = hc.saveToSecret();
-                if (!handlerProps.isEmpty()) {
-                    handlerProps.put(RegistryConstants.ATTR_ID, hc.getId());
-                    handlersConfigs.add(handlerProps);
+                DBWHandlerConfiguration profileConfig = activeProfile == null ? null : activeProfile.getConfiguration(hc.getHandlerDescriptor());
+                if (profileConfig == null || !profileConfig.isEnabled()) {
+                    Map<String, Object> handlerProps = hc.saveToSecret();
+                    if (!handlerProps.isEmpty()) {
+                        handlerProps.put(RegistryConstants.ATTR_ID, hc.getId());
+                        handlersConfigs.add(handlerProps);
+                    }
                 }
             }
             if (!handlersConfigs.isEmpty()) {

@@ -39,6 +39,9 @@ import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.admin.sessions.DBAServerSessionManager;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
+import org.jkiss.dbeaver.model.data.DBDPseudoAttribute;
+import org.jkiss.dbeaver.model.data.DBDPseudoAttributeContainer;
+import org.jkiss.dbeaver.model.data.DBDPseudoAttributeType;
 import org.jkiss.dbeaver.model.edit.DBEObjectConfigurator;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.DBCSession;
@@ -266,12 +269,12 @@ public class DB2DataSource extends JDBCDataSource implements DBCQueryPlanner, DB
     protected Map<String, String> getInternalConnectionProperties(
         @NotNull DBRProgressMonitor monitor,
         @NotNull DBPDriver driver,
-        @Nullable JDBCExecutionContext context,
+        @NotNull JDBCExecutionContext context,
         @NotNull String purpose,
         @NotNull DBPConnectionConfiguration connectionInfo
     ) throws DBCException {
-        Map<String, String> props = new HashMap<>();
-        props.putAll(DB2DataSourceProvider.getConnectionsProps());
+        Map<String, String> props = new LinkedHashMap<>(
+            DB2DataSourceProvider.getConnectionsProps());
         if (getContainer().isConnectionReadOnly()) {
             props.put(DB2Constants.PROP_READ_ONLY, "true");
         }
@@ -458,7 +461,7 @@ public class DB2DataSource extends JDBCDataSource implements DBCQueryPlanner, DB
     // --------------
 
     @Association
-    public Collection<DB2Schema> getSchemas(DBRProgressMonitor monitor) throws DBException
+    public Collection<DB2Schema> getSchemas(@NotNull DBRProgressMonitor monitor) throws DBException
     {
         return schemaCache.getAllObjects(monitor, this);
     }
@@ -471,7 +474,7 @@ public class DB2DataSource extends JDBCDataSource implements DBCQueryPlanner, DB
     @Association
     public Collection<DB2DataType> getDataTypes(DBRProgressMonitor monitor) throws DBException
     {
-        return dataTypeCache.getAllObjects(monitor, this);
+        return monitor == null ? dataTypeCache.getCachedObjects() : dataTypeCache.getAllObjects(monitor, this);
     }
 
     public DB2DataType getDataType(DBRProgressMonitor monitor, String name) throws DBException
@@ -482,7 +485,7 @@ public class DB2DataSource extends JDBCDataSource implements DBCQueryPlanner, DB
     @Association
     public Collection<DB2Tablespace> getTablespaces(DBRProgressMonitor monitor) throws DBException
     {
-        return tablespaceCache.getAllObjects(monitor, this);
+        return monitor == null ? tablespaceCache.getCachedObjects() : tablespaceCache.getAllObjects(monitor, this);
     }
 
     public DB2Tablespace getTablespace(DBRProgressMonitor monitor, String name) throws DBException
@@ -493,7 +496,7 @@ public class DB2DataSource extends JDBCDataSource implements DBCQueryPlanner, DB
     @Association
     public Collection<DB2StorageGroup> getStorageGroups(DBRProgressMonitor monitor) throws DBException
     {
-        return storagegroupCache.getAllObjects(monitor, this);
+        return monitor == null ? storagegroupCache.getCachedObjects() : storagegroupCache.getAllObjects(monitor, this);
     }
 
     public DB2StorageGroup getStorageGroup(DBRProgressMonitor monitor, String name) throws DBException
@@ -504,7 +507,7 @@ public class DB2DataSource extends JDBCDataSource implements DBCQueryPlanner, DB
     @Association
     public Collection<DB2Bufferpool> getBufferpools(DBRProgressMonitor monitor) throws DBException
     {
-        return bufferpoolCache.getAllObjects(monitor, this);
+        return monitor == null ? bufferpoolCache.getCachedObjects() : bufferpoolCache.getAllObjects(monitor, this);
     }
 
     public DB2Bufferpool getBufferpool(DBRProgressMonitor monitor, String name) throws DBException
@@ -515,7 +518,7 @@ public class DB2DataSource extends JDBCDataSource implements DBCQueryPlanner, DB
     @Association
     public Collection<DB2Wrapper> getWrappers(DBRProgressMonitor monitor) throws DBException
     {
-        return wrapperCache.getAllObjects(monitor, this);
+        return monitor == null ? wrapperCache.getCachedObjects() : wrapperCache.getAllObjects(monitor, this);
     }
 
     public DB2Wrapper getWrapper(DBRProgressMonitor monitor, String name) throws DBException
@@ -790,5 +793,4 @@ public class DB2DataSource extends JDBCDataSource implements DBCQueryPlanner, DB
             hasStatistics = true;
         }
     }
-
 }

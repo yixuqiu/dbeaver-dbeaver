@@ -119,7 +119,7 @@ public @interface Property
 
     /**
      * It is possible that value of this property will be an object which can be linked.
-     * Used for caheable properties which may return java.lang.Object ot DBSObject.
+     * Used for cacheable properties which may return java.lang.Object ot DBSObject.
      */
     boolean linkPossible() default false;
 
@@ -164,6 +164,8 @@ public @interface Property
     String format() default ""; //NON-NLS-1
 
     Class<? extends Format> formatter() default Format.class; //NON-NLS-1
+
+    Class<? extends IPropertyValueTransformer> labelProvider() default IPropertyValueTransformer.class;
 
     Class<? extends IPropertyValueTransformer> valueTransformer() default IPropertyValueTransformer.class;
 

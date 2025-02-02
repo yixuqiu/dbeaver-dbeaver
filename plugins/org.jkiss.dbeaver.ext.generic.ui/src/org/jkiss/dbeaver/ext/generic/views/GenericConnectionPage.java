@@ -52,8 +52,10 @@ import org.jkiss.utils.IOUtils;
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.InvalidPathException;
-import java.util.List;
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -166,8 +168,16 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
         }
 
         {
-            Label serverLabel = new Label(settingsGroup, SWT.NONE);
-            serverLabel.setText(GenericMessages.dialog_connection_server_label);
+            Label serverLabel;
+            DBPDriver driver = site.getActiveDataSource().getDriver();
+            String dbTerm = (String) driver.getDriverParameter(GenericConstants.PARAM_TERM_SERVER);
+            if (CommonUtils.isNotEmpty(dbTerm)) {
+                serverLabel = UIUtils.createControlLabel(settingsGroup, dbTerm);
+            } else {
+                serverLabel = new Label(settingsGroup, SWT.NONE);
+                serverLabel.setText(GenericMessages.dialog_connection_server_label);
+            }
+
             serverLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END));
 
             serverText = new Text(settingsGroup, SWT.BORDER);
@@ -185,8 +195,15 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
         }
 
         {
-            Label dbLabel = new Label(settingsGroup, SWT.NONE);
-            dbLabel.setText(GenericMessages.dialog_connection_database_schema_label);
+            Label dbLabel;
+            DBPDriver driver = site.getActiveDataSource().getDriver();
+            String dbTerm = (String) driver.getDriverParameter(GenericConstants.PARAM_TERM_DATABASE);
+            if (CommonUtils.isNotEmpty(dbTerm)) {
+                dbLabel = UIUtils.createControlLabel(settingsGroup, dbTerm);
+            } else {
+                dbLabel = new Label(settingsGroup, SWT.NONE);
+                dbLabel.setText(GenericMessages.dialog_connection_database_schema_label);
+            }
             dbLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END));
 
             dbText = new Text(settingsGroup, SWT.BORDER);
@@ -325,6 +342,7 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
             site.getActiveDataSource().getConnectionConfiguration().setUrl(null);
         }
         parseSampleURL(driver);
+        setupConnectionModeSelection(urlText, this.isCustomURL(), controlGroupsByUrl);
         saveAndUpdate();
     }
 
@@ -337,6 +355,9 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
                 return false;
             }
             for (String prop : metaURL.getRequiredProperties()) {
+                if (isConnectionPropertyOptional(prop)) {
+                    continue;
+                }
                 if (
                     (prop.equals(DBConstants.PROP_HOST) && CommonUtils.isEmptyTrimmed(hostText.getText())) ||
                     (prop.equals(DBConstants.PROP_PORT) && CommonUtils.isEmptyTrimmed(portText.getText())) ||
@@ -348,6 +369,12 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
             }
             return true;
         }
+    }
+
+    // Needed to make some properties optional although they are specified as required in URL pattern
+    // DS provider may pre-populate default values for them
+    protected boolean isConnectionPropertyOptional(String property) {
+        return false;
     }
 
     @Override
@@ -436,7 +463,10 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
                     setMessage(e.getMessage());
                 }
             }
-            if (connectionInfo.getUrl() != null) {
+
+            if (isCustomURL() && typeURLRadio != null && !typeURLRadio.isVisible() && CommonUtils.isEmpty(connectionInfo.getUrl())) {
+                urlText.setText(CommonUtils.notEmpty(dataSource.getDriver().getSampleURL()));
+            } else if (connectionInfo.getUrl() != null) {
                 urlText.setText(CommonUtils.notEmpty(connectionInfo.getUrl()));
             } else {
                 urlText.setText(""); //$NON-NLS-1$
@@ -502,23 +532,35 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
     private void parseSampleURL(DBPDriver driver) {
         metaURL = null;
 
-        if (!CommonUtils.isEmpty(driver.getSampleURL())) {
-            isCustom = false;
+        boolean useCustomUrl = CommonUtils.isEmpty(driver.getSampleURL());
+
+        if (!useCustomUrl) {
             try {
                 metaURL = DatabaseURL.parseSampleURL(driver.getSampleURL());
             } catch (DBException e) {
                 setErrorMessage(e.getMessage());
             }
             final Set<String> properties = metaURL.getAvailableProperties();
-            urlText.setEditable(false);
+            boolean isSampleUrlUsable = properties.contains(DBConstants.PROP_HOST) ||
+                properties.contains(DBConstants.PROP_DATABASE) ||
+                properties.contains(DBConstants.PROP_SERVER) ||
+                properties.contains(DBConstants.PROP_FOLDER) ||
+                properties.contains(DBConstants.PROP_FILE);
+            if (isSampleUrlUsable) {
+                isCustom = false;
+                showControlGroup(GROUP_HOST, properties.contains(DBConstants.PROP_HOST));
+                showControlGroup(GROUP_SERVER, properties.contains(DBConstants.PROP_SERVER));
+                showControlGroup(GROUP_DB, properties.contains(DBConstants.PROP_DATABASE));
+                showControlGroup(GROUP_PATH, properties.contains(DBConstants.PROP_FOLDER) || properties.contains(DBConstants.PROP_FILE));
+                showControlGroup(GROUP_CONNECTION_MODE, true);
+                urlText.setEditable(false);
+                controlGroupsByUrl = properties.stream().map(controlGroupByUrlProp::get).collect(Collectors.toSet());
+            } else {
+                useCustomUrl = true;
+            }
+        }
 
-            showControlGroup(GROUP_HOST, properties.contains(DBConstants.PROP_HOST));
-            showControlGroup(GROUP_SERVER, properties.contains(DBConstants.PROP_SERVER));
-            showControlGroup(GROUP_DB, properties.contains(DBConstants.PROP_DATABASE));
-            showControlGroup(GROUP_PATH, properties.contains(DBConstants.PROP_FOLDER) || properties.contains(DBConstants.PROP_FILE));
-            showControlGroup(GROUP_CONNECTION_MODE, true);
-            controlGroupsByUrl = properties.stream().map(controlGroupByUrlProp::get).collect(Collectors.toSet());
-        } else {
+        if (useCustomUrl) {
             isCustom = true;
             showControlGroup(GROUP_HOST, false);
             showControlGroup(GROUP_SERVER, false);
@@ -543,11 +585,11 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
         String paramCreate = CommonUtils.toString(site.getDriver().getDriverParameter(GenericConstants.PARAM_CREATE_URL_PARAM));
 
         DataSourceDescriptor dataSource = (DataSourceDescriptor) site.getActiveDataSource();
-        final DataSourceDescriptor testDataSource = new DataSourceDescriptor(
-            site.getDataSourceRegistry(),
+        DataSourceDescriptor testDataSource = site.getDataSourceRegistry().createDataSource(
             dataSource.getId(),
             dataSource.getDriver(),
-            new DBPConnectionConfiguration(dataSource.getConnectionConfiguration()));
+            new DBPConnectionConfiguration(dataSource.getConnectionConfiguration())
+        );
 
         saveSettings(testDataSource);
         DBPConnectionConfiguration cfg = testDataSource.getConnectionConfiguration();
@@ -595,7 +637,7 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements IDi
     }
 
     private void showControlGroup(String group, boolean show) {
-        List<Control> controlList = propGroupMap.get(group);
+        Set<Control> controlList = propGroupMap.get(group);
         if (controlList != null) {
             for (Control control : controlList) {
                 Object gd = control.getLayoutData();

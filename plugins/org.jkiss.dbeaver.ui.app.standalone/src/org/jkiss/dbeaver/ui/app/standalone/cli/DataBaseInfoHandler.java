@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ui.app.standalone.cli;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.Strictness;
 import com.google.gson.stream.JsonWriter;
 import org.apache.commons.cli.CommandLine;
 import org.eclipse.core.runtime.Platform;
@@ -28,7 +29,7 @@ import org.jkiss.dbeaver.model.data.json.JSONUtils;
 import org.jkiss.dbeaver.registry.DataSourceProviderDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
-import org.jkiss.dbeaver.ui.app.standalone.CommandLineParameterHandler;
+import org.jkiss.dbeaver.ui.app.standalone.ICommandLineParameterHandler;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 
 import java.io.IOException;
@@ -41,7 +42,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-public class DataBaseInfoHandler implements CommandLineParameterHandler {
+public class DataBaseInfoHandler implements ICommandLineParameterHandler {
     private static final String OUTPUT_DATABASES_JSON = "database.drivers.json"; //$NON-NLS-1$
     private static final String PRODUCT_ID_LABEL = "id"; //$NON-NLS-1$
     private static final String PRODUCT_NAME_LABEL = "name"; //$NON-NLS-1$
@@ -56,7 +57,7 @@ public class DataBaseInfoHandler implements CommandLineParameterHandler {
     private static final String DB_ADITIONAL_FEATURE_LABEL = "pro"; //$NON-NLS-1$
     private static final Log log = Log.getLog(DataBaseInfoHandler.class);
     private static final Gson DB_GSON = new GsonBuilder()
-        .setLenient()
+        .setStrictness(Strictness.LENIENT)
         .serializeNulls()
         .create();
 

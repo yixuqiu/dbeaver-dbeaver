@@ -17,7 +17,7 @@
  */
 package org.jkiss.dbeaver.ext.exasol;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class ExasolMessages extends NLS {
     private static final String BUNDLE_NAME = "org.jkiss.dbeaver.ext.exasol.ExasolResources"; //$NON-NLS-1$
@@ -46,6 +46,8 @@ public class ExasolMessages extends NLS {
     public static String exasol_security_policy_name;
     public static String exasol_security_policy_description;
     public static String manager_consumer_alter;
+
+    public static String pseudo_column_rowid_description;
 
     static {
         // initialize resource bundle

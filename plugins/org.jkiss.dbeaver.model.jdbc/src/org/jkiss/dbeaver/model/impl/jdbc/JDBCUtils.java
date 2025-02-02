@@ -22,11 +22,13 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.exec.DBCException;
+import org.jkiss.dbeaver.model.exec.DBExecUtils;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCStatement;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
+import org.jkiss.dbeaver.model.sql.SQLState;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectFilter;
@@ -46,6 +48,8 @@ import java.util.Map;
  * JDBCUtils
  */
 public class JDBCUtils {
+    public static boolean LOG_JDBC_WARNINGS = CommonUtils.toBoolean(System.getProperty("dbeaver.jdbc.log.warnings"));
+
     private static final Log log = Log.getLog(JDBCUtils.class);
 
     private static final Map<String, Integer> badColumnNames = new HashMap<>();
@@ -100,7 +104,6 @@ public class JDBCUtils {
         }
     }
 
-    @Nullable
     public static void setStringOrNull(PreparedStatement dbStat, int columnIndex, String value) throws SQLException {
         if (value != null) {
             dbStat.setString(columnIndex, value);
@@ -526,37 +529,25 @@ public class JDBCUtils {
     }
 
     public static DBSForeignKeyModifyRule getCascadeFromNum(int num) {
-        switch (num) {
-            case DatabaseMetaData.importedKeyNoAction:
-                return DBSForeignKeyModifyRule.NO_ACTION;
-            case DatabaseMetaData.importedKeyCascade:
-                return DBSForeignKeyModifyRule.CASCADE;
-            case DatabaseMetaData.importedKeySetNull:
-                return DBSForeignKeyModifyRule.SET_NULL;
-            case DatabaseMetaData.importedKeySetDefault:
-                return DBSForeignKeyModifyRule.SET_DEFAULT;
-            case DatabaseMetaData.importedKeyRestrict:
-                return DBSForeignKeyModifyRule.RESTRICT;
-            default:
-                return DBSForeignKeyModifyRule.UNKNOWN;
-        }
+        return switch (num) {
+            case DatabaseMetaData.importedKeyNoAction -> DBSForeignKeyModifyRule.NO_ACTION;
+            case DatabaseMetaData.importedKeyCascade -> DBSForeignKeyModifyRule.CASCADE;
+            case DatabaseMetaData.importedKeySetNull -> DBSForeignKeyModifyRule.SET_NULL;
+            case DatabaseMetaData.importedKeySetDefault -> DBSForeignKeyModifyRule.SET_DEFAULT;
+            case DatabaseMetaData.importedKeyRestrict -> DBSForeignKeyModifyRule.RESTRICT;
+            default -> DBSForeignKeyModifyRule.UNKNOWN;
+        };
     }
 
     public static DBSForeignKeyModifyRule getCascadeFromName(String name) {
-        switch (name) {
-            case "NO ACTION":
-                return DBSForeignKeyModifyRule.NO_ACTION;
-            case "CASCADE":
-                return DBSForeignKeyModifyRule.CASCADE;
-            case "SET NULL":
-                return DBSForeignKeyModifyRule.SET_NULL;
-            case "SET DEFAULT":
-                return DBSForeignKeyModifyRule.SET_DEFAULT;
-            case "RESTRICT":
-                return DBSForeignKeyModifyRule.RESTRICT;
-            default:
-                return DBSForeignKeyModifyRule.UNKNOWN;
-        }
+        return switch (name) {
+            case "NO ACTION" -> DBSForeignKeyModifyRule.NO_ACTION;
+            case "CASCADE" -> DBSForeignKeyModifyRule.CASCADE;
+            case "SET NULL" -> DBSForeignKeyModifyRule.SET_NULL;
+            case "SET DEFAULT" -> DBSForeignKeyModifyRule.SET_DEFAULT;
+            case "RESTRICT" -> DBSForeignKeyModifyRule.RESTRICT;
+            default -> DBSForeignKeyModifyRule.UNKNOWN;
+        };
     }
 
     public static void executeSQL(Connection session, String sql, Object... params) throws SQLException {
@@ -862,4 +853,15 @@ public class JDBCUtils {
     public static String[] getColumnList(@NotNull String columnName) {
         return new String[] {columnName.toLowerCase()};
     }
+
+    public static boolean isRollbackWarning(SQLException sqlError) {
+        return
+            SQLState.SQL_25P01.getCode().equals(sqlError.getSQLState());
+    }
+
+    public static boolean isFeatureNotSupportedError(DBPDataSource dataSource, Throwable ex) {
+        return ex instanceof SQLFeatureNotSupportedException || DBExecUtils.discoverErrorType(dataSource, ex)
+            == DBPErrorAssistant.ErrorType.FEATURE_UNSUPPORTED;
+    }
+
 }

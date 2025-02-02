@@ -203,7 +203,7 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
             // Document-based datasource
             rsAttributes = DBUtils.getAttributeBindings(session, sourceObject, resultSet.getMeta());
         } else {
-            rsAttributes = DBUtils.makeLeafAttributeBindings(session, sourceObject, resultSet);
+            rsAttributes = DTUtils.makeLeafAttributeBindings(session, sourceObject, resultSet);
         }
         columnMappings = new ColumnMapping[rsAttributes.length];
         sourceBindings = rsAttributes;
@@ -593,7 +593,11 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
         if (!isPreview && targetSession != null && oldAutoCommit != null) {
             try {
                 DBCTransactionManager txnManager = DBUtils.getTransactionManager(targetSession.getExecutionContext());
-                if (txnManager != null) {
+                if (txnManager != null && txnManager.isSupportsTransactions()) {
+                    // Every uncommited data here is considered as fail, and we need to rollback them
+                    if (!txnManager.isAutoCommit()) {
+                        txnManager.rollback(targetSession, null);
+                    }
                     txnManager.setAutoCommit(targetSession.getProgressMonitor(), oldAutoCommit);
                 }
             } catch (Exception e) {
@@ -731,7 +735,10 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
                 DBSObjectContainer container = settings.getContainer();
                 DBNModel navigatorModel = DBNUtils.getNavigatorModel(container);
                 if (navigatorModel != null) {
-                    var node = DBNUtils.getNodeByObject(container);
+                    var node = DBNUtils.getNodeByObject(containerMapping.getTarget());
+                    if (node == null) {
+                        node = DBNUtils.getNodeByObject(container);
+                    }
                     if (node != null) {
                         node.refreshNode(monitor, this);
                     }

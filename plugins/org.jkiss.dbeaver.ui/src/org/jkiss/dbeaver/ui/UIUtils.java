@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2024 DBeaver Corp and others
+ * Copyright (C) 2010-2025 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,12 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.e4.ui.model.application.ui.menu.MHandledItem;
 import org.eclipse.e4.ui.workbench.renderers.swt.HandledContributionItem;
-import org.eclipse.jface.action.*;
+import org.eclipse.jface.action.IAction;
+import org.eclipse.jface.action.IContributionItem;
+import org.eclipse.jface.action.IContributionManager;
+import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.commands.ActionHandler;
+import org.eclipse.jface.dialogs.Dialog;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.IDialogSettings;
 import org.eclipse.jface.dialogs.ProgressMonitorDialog;
@@ -37,7 +41,6 @@ import org.eclipse.jface.preference.PreferenceManager;
 import org.eclipse.jface.resource.ColorRegistry;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.resource.JFaceResources;
-import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.viewers.AbstractTreeViewer;
 import org.eclipse.jface.viewers.ISelectionProvider;
 import org.eclipse.jface.window.IShellProvider;
@@ -46,12 +49,13 @@ import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.*;
 import org.eclipse.swt.dnd.Clipboard;
-import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.events.*;
 import org.eclipse.swt.graphics.*;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.layout.RowData;
+import org.eclipse.swt.layout.RowLayout;
 import org.eclipse.swt.widgets.*;
 import org.eclipse.ui.*;
 import org.eclipse.ui.contexts.IContextService;
@@ -65,11 +69,13 @@ import org.eclipse.ui.services.IServiceLocator;
 import org.eclipse.ui.swt.IFocusService;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.DBIcon;
-import org.jkiss.dbeaver.model.DBPImage;
+import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPConnectionType;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContextDefaults;
 import org.jkiss.dbeaver.model.runtime.*;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.DummyRunnableContext;
@@ -110,7 +116,7 @@ public class UIUtils {
     public static final Color COLOR_GREEN_CONTRAST = new Color(null, 23, 135, 58);
     public static final Color COLOR_VALIDATION_ERROR = new Color(255, 220, 220);
     
-    private static final Color COLOR_WHITE_DARK = new Color(null, 208, 208, 208);
+    private static final Color COLOR_WHITE_DARK = new Color(null, 192, 192, 192);
     private static final SharedTextColors SHARED_TEXT_COLORS = new SharedTextColors();
     private static final SharedFonts SHARED_FONTS = new SharedFonts();
     private static final String MAX_LONG_STRING = String.valueOf(Long.MAX_VALUE);
@@ -263,7 +269,7 @@ public class UIUtils {
             if (fit && totalWidth < clientArea.width) {
                 int sbWidth = table.getBorderWidth() * 2;
                 if (table.getVerticalBar() != null) {
-                    sbWidth = table.getVerticalBar().getSize().x;
+                    sbWidth = sbWidth + table.getVerticalBar().getSize().x;
                 }
                 if (columns.length > 0) {
                     float extraSpace = (clientArea.width - totalWidth - sbWidth) / columns.length - 1;
@@ -574,6 +580,24 @@ public class UIUtils {
         return new Font(normalFont.getDevice(), data);
     }
 
+
+    /**
+     * Modifies the size of the given font by applying the specified modifier to the current font size.
+     *
+     * @param normalFont the original font whose size needs to be modified.
+     * @param modifier the amount by which to modify the font size. Positive values increase the size,
+     *                 and negative values decrease it.
+     * @return a new {@link Font} object with the modified size.
+     */
+    @NotNull
+    public static Font modifyFontSize(@NotNull Font normalFont, int modifier) {
+        final FontData[] data = normalFont.getFontData();
+        for (FontData fd : data) {
+            fd.setHeight(fd.getHeight() + modifier);
+        }
+        return new Font(normalFont.getDevice(), data);
+    }
+
     public static Group createControlGroup(Composite parent, String label, int columns, int layoutStyle, int widthHint)
     {
         Group group = new Group(parent, SWT.NONE);
@@ -690,9 +714,24 @@ public class UIUtils {
 
     @NotNull
     public static Link createInfoLink(@NotNull Composite parent, @NotNull String text, @NotNull Runnable callback) {
-        final Composite composite = new Composite(parent, SWT.NONE);
-        composite.setLayout(GridLayoutFactory.fillDefaults().numColumns(2).create());
+        return createInfoLink(parent, text, callback, SWT.NONE, 1, SWT.DEFAULT);
+    }
 
+    @NotNull
+    public static Link createInfoLink(
+        @NotNull Composite parent,
+        @NotNull String text,
+        @NotNull Runnable callback,
+        int style,
+        int colsSpan,
+        int widthHint
+    ) {
+        final Composite composite = new Composite(parent, style);
+        composite.setLayout(GridLayoutFactory.fillDefaults().numColumns(2).create());
+        composite.setLayoutData(GridDataFactory.fillDefaults()
+            .span(colsSpan, 1)
+            .hint(widthHint, SWT.DEFAULT)
+            .grab(true, false).create());
         final Label imageLabel = new Label(composite, SWT.NONE);
         imageLabel.setImage(DBeaverIcons.getImage(DBIcon.SMALL_INFO));
         imageLabel.setLayoutData(new GridData(SWT.BEGINNING, SWT.BEGINNING, false, false));
@@ -1001,11 +1040,12 @@ public class UIUtils {
      * Creates {@link ScrolledComposite} from the {@link Composite}
      *
      * @param parent composite parent
+     * @param style composite style
      * @return ScrolledComposite
      */
     @NotNull
-    public static ScrolledComposite createScrolledComposite(@NotNull Composite parent) {
-        ScrolledComposite scrolledComposite = new ScrolledComposite(parent, SWT.V_SCROLL);
+    public static ScrolledComposite createScrolledComposite(@NotNull Composite parent, int style) {
+        ScrolledComposite scrolledComposite = new ScrolledComposite(parent, style);
         scrolledComposite.setLayout(new GridLayout(1, false));
         scrolledComposite.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         return scrolledComposite;
@@ -1024,10 +1064,16 @@ public class UIUtils {
         scrolledComposite.addControlListener(new ControlAdapter() {
             @Override
             public void controlResized(ControlEvent e) {
-                scrolledComposite.setMinHeight(content.computeSize(SWT.DEFAULT, SWT.DEFAULT).y);
+                Rectangle area = scrolledComposite.getClientArea();
+                Point size = content.computeSize(
+                    (scrolledComposite.getStyle() & SWT.H_SCROLL) != 0 ? SWT.DEFAULT : area.width,
+                    (scrolledComposite.getStyle() & SWT.V_SCROLL) != 0 ? SWT.DEFAULT : area.height
+                );
+
+                content.setSize(size);
+                scrolledComposite.setMinSize(size);
             }
         });
-        scrolledComposite.setMinSize(content.computeSize(SWT.DEFAULT, SWT.DEFAULT));
     }
 
     public static Composite createPlaceholder(@NotNull Composite parent, int columns, int spacing) {
@@ -1181,8 +1227,7 @@ public class UIUtils {
     }
 
     @NotNull
-    public static Button createPushButton(@NotNull Composite parent, @Nullable String label, @Nullable Image image, @Nullable SelectionListener selectionListener)
-    {
+    public static Button createPushButton(@NotNull Composite parent, @Nullable String label, @Nullable Image image, @Nullable SelectionListener selectionListener) {
         Button button = new Button(parent, SWT.PUSH);
         if (label != null) {
             button.setText(label);
@@ -1197,13 +1242,37 @@ public class UIUtils {
     }
 
     @NotNull
+    public static Button createPushButton(
+        @NotNull Composite parent,
+        @Nullable String label,
+        @Nullable String toolTip,
+        @Nullable DBPImage image,
+        @Nullable SelectionListener selectionListener
+    ) {
+        Button button = new Button(parent, SWT.PUSH);
+        if (label != null) {
+            button.setText(label);
+        }
+        if (toolTip != null) {
+            button.setToolTipText(toolTip);
+        }
+        if (image != null) {
+            button.setImage(DBeaverIcons.getImage(image));
+        }
+        if (selectionListener != null) {
+            button.addSelectionListener(selectionListener);
+        }
+        return button;
+    }
+
+    @NotNull
     public static Button createDialogButton(@NotNull Composite parent, @Nullable String label, @Nullable SelectionListener selectionListener) {
-        return createDialogButton(parent, label, null, null, selectionListener);
+        return createDialogButton(parent, label, null, (DBPImage) null, selectionListener);
     }
 
     @NotNull
     public static Button createDialogButton(@NotNull Composite parent, @Nullable String label, @Nullable DBPImage icon, @Nullable String toolTip, @Nullable SelectionListener selectionListener) {
-        return createDialogButton(parent, label, toolTip, icon, GridData.HORIZONTAL_ALIGN_FILL, selectionListener);
+        return createDialogButton(parent, label, toolTip, icon, selectionListener);
     }
 
     @NotNull
@@ -1212,7 +1281,6 @@ public class UIUtils {
         @Nullable String label,
         @Nullable String toolTip,
         @Nullable DBPImage icon,
-        int style,
         @Nullable SelectionListener selectionListener
     ) {
         Button button = new Button(parent, SWT.PUSH);
@@ -1225,24 +1293,43 @@ public class UIUtils {
             button.setToolTipText(toolTip);
         }
 
-        // Dialog settings
-        GridData gd = new GridData(style);
-        GC gc = new GC(button);
-        int widthHint;
-        try {
-            gc.setFont(JFaceResources.getDialogFont());
-            widthHint = org.eclipse.jface.dialogs.Dialog.convertHorizontalDLUsToPixels(gc.getFontMetrics(), IDialogConstants.BUTTON_WIDTH);
-        } finally {
-            gc.dispose();
-        }
-        Point minSize = button.computeSize(SWT.DEFAULT, SWT.DEFAULT, true);
-        gd.widthHint = Math.max(widthHint, minSize.x);
-        button.setLayoutData(gd);
+        button.setLayoutData(getDialogButtonLayoutData(parent, button));
 
         if (selectionListener != null) {
             button.addSelectionListener(selectionListener);
         }
         return button;
+    }
+
+    private static Object getDialogButtonLayoutData(@NotNull Composite parent, @NotNull Button button) {
+        int buttonWidth = getDialogButtonWidth(button);
+        if (parent.getLayout() instanceof GridLayout) {
+            GridData gridData = new GridData(GridData.HORIZONTAL_ALIGN_FILL);
+            gridData.widthHint = buttonWidth;
+            return gridData;
+        } else if (parent.getLayout() instanceof RowLayout) {
+            return new RowData(buttonWidth, SWT.DEFAULT);
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Returns the width of the button. The width is calculated based on the button font.
+     *
+     * @param button the button.
+     * @return the width of the button.
+     */
+    public static int getDialogButtonWidth(@NotNull Button button) {
+        GC gc = new GC(button);
+        try {
+            gc.setFont(JFaceResources.getDialogFont());
+            int widthHint = Dialog.convertHorizontalDLUsToPixels(gc.getFontMetrics(), IDialogConstants.BUTTON_WIDTH);
+            Point minSize = button.computeSize(SWT.DEFAULT, SWT.DEFAULT, true);
+            return Math.max(widthHint, minSize.x);
+        } finally {
+            gc.dispose();
+        }
     }
 
     @NotNull
@@ -1647,7 +1734,7 @@ public class UIUtils {
     }
 
     public static boolean isInDialog(Control control) {
-        return control.getShell().getData() instanceof org.eclipse.jface.dialogs.Dialog;
+        return control.getShell().getData() instanceof Dialog;
     }
 
     public static boolean isInWizard(Control control) {
@@ -1666,13 +1753,22 @@ public class UIUtils {
         asyncExec(() -> display.post(event));
     }
 
-    public static void drawMessageOverControl(Control control, PaintEvent e, String message, int offset) {
-        drawMessageOverControl(control, e.gc, message, offset);
+    public static Point drawMessageOverControl(Control control, PaintEvent e, String message, int offset) {
+        return drawMessageOverControl(control, e.gc, message, offset);
     }
 
-    public static void drawMessageOverControl(Control control, GC gc, String message, int offset) {
+    public static Point drawMessageOverControl(Control control, GC gc, String message, int offset) {
         Rectangle bounds = control.getBounds();
-        final int height = gc.textExtent(message).y;
+        Point textSize = gc.textExtent(message);
+
+        if (textSize.x > bounds.width) {
+            double charsPerLine = (double) bounds.width / gc.getFontMetrics().getAverageCharacterWidth();
+
+            message = UITextUtils.wrap(message, (int) charsPerLine);
+            textSize = gc.textExtent(message);
+        }
+
+        final int height = textSize.y;
         for (String line : message.split("\n")) {
             line = line.trim();
             Point ext = gc.textExtent(line);
@@ -1681,138 +1777,8 @@ public class UIUtils {
                 (bounds.height - height) / 2 + offset);
             offset += ext.y;
         }
-    }
 
-    public static void createTableContextMenu(@NotNull final Table table, @Nullable DBRCreator<Boolean, IContributionManager> menuCreator) {
-        MenuManager menuMgr = new MenuManager();
-        menuMgr.addMenuListener(manager -> {
-            if (menuCreator != null) {
-                if (!menuCreator.createObject(menuMgr)) {
-                    return;
-                }
-            }
-            UIUtils.fillDefaultTableContextMenu(manager, table);
-        });
-        menuMgr.setRemoveAllWhenShown(true);
-        table.setMenu(menuMgr.createContextMenu(table));
-        table.addDisposeListener(e -> menuMgr.dispose());
-    }
-
-    public static void setControlContextMenu(Control control, IMenuListener menuListener) {
-        MenuManager menuMgr = new MenuManager();
-        menuMgr.addMenuListener(menuListener);
-        menuMgr.setRemoveAllWhenShown(true);
-        control.setMenu(menuMgr.createContextMenu(control));
-        control.addDisposeListener(e -> menuMgr.dispose());
-    }
-
-    public static void fillDefaultTableContextMenu(IContributionManager menu, final Table table) {
-        if (table.getColumnCount() > 1) {
-            menu.add(new Action(NLS.bind(UIMessages.utils_actions_copy_label, table.getColumn(0).getText())) {
-                @Override
-                public void run() {
-                    StringBuilder text = new StringBuilder();
-                    for (TableItem item : table.getSelection()) {
-                        if (text.length() > 0) text.append("\n");
-                        text.append(item.getText(0));
-                    }
-                    if (text.length() == 0) {
-                        return;
-                    }
-                    UIUtils.setClipboardContents(table.getDisplay(), TextTransfer.getInstance(), text.toString());
-                }
-            });
-        }
-        menu.add(new Action(UIMessages.utils_actions_copy_all_label) {
-            @Override
-            public void run() {
-                StringBuilder text = new StringBuilder();
-                int columnCount = table.getColumnCount();
-                for (TableItem item : table.getSelection()) {
-                    if (text.length() > 0) text.append("\n");
-                    for (int i = 0 ; i < columnCount; i++) {
-                        if (i > 0) text.append("\t");
-                        text.append(item.getText(i));
-                    }
-                }
-                if (text.length() == 0) {
-                    return;
-                }
-                UIUtils.setClipboardContents(table.getDisplay(), TextTransfer.getInstance(), text.toString());
-            }
-        });
-    }
-
-    public static void fillDefaultTreeContextMenu(IContributionManager menu, final Tree tree) {
-        if (tree.getColumnCount() > 1) {
-            menu.add(new Action("Copy " + tree.getColumn(0).getText()) {
-                @Override
-                public void run() {
-                    StringBuilder text = new StringBuilder();
-                    for (TreeItem item : tree.getSelection()) {
-                        if (text.length() > 0) text.append("\n");
-                        text.append(item.getText(0));
-                    }
-                    if (text.length() == 0) {
-                        return;
-                    }
-                    UIUtils.setClipboardContents(tree.getDisplay(), TextTransfer.getInstance(), text.toString());
-                }
-            });
-        }
-        menu.add(new Action(UIMessages.utils_actions_copy_all_label) {
-            @Override
-            public void run() {
-                StringBuilder text = new StringBuilder();
-                int columnCount = tree.getColumnCount();
-                for (TreeItem item : tree.getSelection()) {
-                    if (text.length() > 0) text.append("\n");
-                    for (int i = 0 ; i < columnCount; i++) {
-                        if (i > 0) text.append("\t");
-                        text.append(item.getText(i));
-                    }
-                }
-                if (text.length() == 0) {
-                    return;
-                }
-                UIUtils.setClipboardContents(tree.getDisplay(), TextTransfer.getInstance(), text.toString());
-            }
-        });
-        //menu.add(ActionFactory.SELECT_ALL.create(UIUtils.getActiveWorkbenchWindow()));
-    }
-
-    public static void addFileOpenOverlay(Text text, SelectionListener listener) {
-        final Image browseImage = DBeaverIcons.getImage(DBIcon.TREE_FOLDER);
-        final Rectangle iconBounds = browseImage.getBounds();
-        text.addPaintListener(e -> {
-            final Rectangle bounds = ((Text) e.widget).getBounds();
-            e.gc.drawImage(browseImage, bounds.width - iconBounds.width - 2, 0);
-        });
-    }
-
-    public static Combo createDelimiterCombo(Composite group, String label, String[] options, String defDelimiter, boolean multiDelims) {
-        createControlLabel(group, label);
-        Combo combo = new Combo(group, SWT.BORDER | SWT.DROP_DOWN);
-        combo.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
-        for (String option : options) {
-            combo.add(CommonUtils.escapeDisplayString(option));
-        }
-        if (!multiDelims) {
-            if (!ArrayUtils.contains(options, defDelimiter)) {
-                combo.add(CommonUtils.escapeDisplayString(defDelimiter));
-            }
-            String[] items = combo.getItems();
-            for (int i = 0, itemsLength = items.length; i < itemsLength; i++) {
-                String delim = CommonUtils.unescapeDisplayString(items[i]);
-                if (delim.equals(defDelimiter)) {
-                    combo.select(i);
-                    break;
-                }
-            }
-        } else {
-            combo.setText(CommonUtils.escapeDisplayString(defDelimiter));
-        }
-        return combo;
+        return textSize;
     }
 
     public static SharedTextColors getSharedTextColors() {
@@ -1923,6 +1889,28 @@ public class UIUtils {
     public static void runInProgressService(final DBRRunnableWithProgress runnable)
         throws InvocationTargetException, InterruptedException {
         getDefaultRunnableContext().run(true, true, runnable);
+    }
+
+    public static <T, R> T runWithMonitor(final DBRRunnableWithReturn<T> runnable) throws DBException  {
+        Object[] result = new Object[1];
+        try {
+            getDefaultRunnableContext().run(true, true, monitor -> {
+                try {
+                    result[0] = runnable.runTask(monitor);
+                } catch (DBException e) {
+                    throw new InvocationTargetException(e);
+                }
+            });
+        } catch (InvocationTargetException e) {
+            if (e.getTargetException() instanceof DBException dbe) {
+                throw dbe;
+            } else {
+                throw new DBException("Internal error", e.getTargetException());
+            }
+        } catch (Throwable e) {
+            log.error(e);
+        }
+        return (T) result[0];
     }
 
     /**
@@ -2140,10 +2128,14 @@ public class UIUtils {
     }
 
     public static void resizeShell(@NotNull Shell shell) {
+        final Point compSize = shell.computeSize(SWT.DEFAULT, SWT.DEFAULT, true);
+        resizeShell(shell, compSize);
+    }
+
+    public static void resizeShell(@NotNull Shell shell, Point compSize) {
         final Rectangle displayArea = shell.getDisplay().getClientArea();
         final Point shellLocation = shell.getLocation();
         final Point shellSize = shell.getSize();
-        final Point compSize = shell.computeSize(SWT.DEFAULT, SWT.DEFAULT, true);
         boolean needsLayout = false;
 
         if (shellSize.x < compSize.x || shellSize.y < compSize.y) {
@@ -2171,7 +2163,7 @@ public class UIUtils {
     public static void waitJobCompletion(@NotNull AbstractJob job, @Nullable IProgressMonitor monitor) {
         // Wait until job finished
         Display display = Display.getCurrent();
-        while (!job.isFinished()) {
+        while (!job.isFinished() && !DBWorkbench.getPlatform().isShuttingDown()) {
             if (monitor != null && monitor.isCanceled()) {
                 job.cancel();
             }
@@ -2332,7 +2324,7 @@ public class UIUtils {
     }
 
     public static Font getMonospaceFont() {
-        return PlatformUI.getWorkbench().getThemeManager().getCurrentTheme().getFontRegistry().get(UIFonts.DBEAVER_FONTS_MONOSPACE);
+        return BaseThemeSettings.instance.monospaceFont;
     }
 
     public static <T extends Control> T getParentOfType(Control control, Class<T> parentType) {
@@ -2389,26 +2381,6 @@ public class UIUtils {
         }
     }
 
-    public static void installAndUpdateMainFont(@NotNull Control control) {
-        final IPropertyChangeListener listener = event -> {
-            if (event.getProperty().equals(UIFonts.DBEAVER_FONTS_MAIN_FONT)) {
-                applyMainFont(control);
-            }
-        };
-
-        PlatformUI.getWorkbench().getThemeManager().addPropertyChangeListener(listener);
-        control.addDisposeListener(e -> PlatformUI.getWorkbench().getThemeManager().removePropertyChangeListener(listener));
-
-        applyMainFont(control);
-    }
-
-    public static void applyMainFont(@Nullable Control control) {
-        if (control == null || control.isDisposed() || mainFontIsDefault()) {
-            return;
-        }
-        applyMainFont(control, JFaceResources.getFont(UIFonts.DBEAVER_FONTS_MAIN_FONT));
-    }
-
     @Nullable
     public static Text recreateTextControl(@Nullable Text original, int style) {
         if (original == null || original.getStyle() == style) {
@@ -2447,7 +2419,27 @@ public class UIUtils {
         }
     }
 
-    private static void applyMainFont(@NotNull Control control, @NotNull Font font) {
+    public static void installAndUpdateMainFont(@NotNull Control control) {
+        BaseThemeSettings.instance.addPropertyListener(
+            UIFonts.DBEAVER_FONTS_MAIN_FONT,
+            s -> applyMainFont(control),
+            control
+        );
+
+        //applyMainFont(control);
+    }
+
+    public static void applyMainFont(@Nullable Control control) {
+        applyMainFont(control, BaseThemeSettings.instance.baseFont);
+    }
+
+    public static void applyMainFont(@Nullable Control control, @NotNull Font font) {
+        if (control == null || control.isDisposed() || mainFontIsDefault()) {
+            return;
+        }
+        if (control instanceof Composite comp) {
+            comp.layout();
+        }
         control.setFont(font);
 
         if (control instanceof Composite) {
@@ -2474,7 +2466,7 @@ public class UIUtils {
                 }
             } else if (data instanceof HandledContributionItem) {
                 MHandledItem model = ((HandledContributionItem) data).getModel();
-                if (model != null ) {
+                if (model != null) {
                     ParameterizedCommand cmd = model.getWbCommand();
                     if (cmd != null && commandId.equals(cmd.getId())) {
                         return item;
@@ -2520,5 +2512,37 @@ public class UIUtils {
         } catch (Exception e) {
             log.error("Unable to enable double buffering", e.getCause());
         }
+    }
+
+    public static String getCatalogSchemaTerms(@Nullable DBPDataSourceContainer dataSourceContainer, boolean checkChangePossibility) {
+        DBPDataSource dataSource = dataSourceContainer == null ? null : dataSourceContainer.getDataSource();
+        if (dataSource != null) {
+            DBPDataSourceInfo dataSourceInfo = dataSource.getInfo();
+            boolean showCatalog = true;
+            boolean showSchema = true;
+            if (checkChangePossibility) {
+                DBCExecutionContext defaultContext = DBUtils.getDefaultContext(dataSource, false);
+                if (defaultContext != null) {
+                    DBCExecutionContextDefaults<?, ?> contextDefaults = defaultContext.getContextDefaults();
+                    if (contextDefaults != null) {
+                        showCatalog = contextDefaults.getDefaultCatalog() != null || contextDefaults.supportsCatalogChange();
+                        showSchema = contextDefaults.getDefaultSchema() != null || contextDefaults.supportsSchemaChange();
+                    }
+                }
+            }
+
+            String catalogTerm = showCatalog ? dataSourceInfo.getCatalogTerm() : null;
+            String schemaTerm = showSchema ? dataSourceInfo.getSchemaTerm() : null;
+            if (CommonUtils.isEmpty(catalogTerm)) {
+                if (!CommonUtils.isEmpty(schemaTerm)) {
+                    return schemaTerm;
+                }
+            } else if (CommonUtils.isEmpty(schemaTerm)) {
+                return catalogTerm;
+            } else {
+                return catalogTerm + "/" + schemaTerm;
+            }
+        }
+        return UIMessages.label_catalog_schema;
     }
 }

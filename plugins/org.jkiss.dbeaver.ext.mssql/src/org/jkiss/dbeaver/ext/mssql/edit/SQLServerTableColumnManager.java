@@ -46,12 +46,14 @@ import java.util.Map;
 public class SQLServerTableColumnManager extends SQLTableColumnManager<SQLServerTableColumn, SQLServerTableBase> implements DBEStructEditor<SQLServerTableColumn>, DBEObjectRenamer<SQLServerTableColumn> {
 
     protected final ColumnModifier<SQLServerTableColumn> IdentityModifier = (monitor, column, sql, command) -> {
-        if (column.isIdentity()) {
+        if (column.isIdentity() && !column.isTimestamp()) {
             try {
                 SQLServerTableColumn.IdentityInfo identityInfo = column.getIdentityInfo(monitor);
                 long incrementValue = identityInfo.getIncrementValue();
                 if (incrementValue <= 0) incrementValue = 1;
-                sql.append(" IDENTITY(").append(identityInfo.getSeedValue()).append(",").append(incrementValue).append(")");
+                long seedValue = identityInfo.getSeedValue();
+                if (seedValue <= 0) seedValue = 1;
+                sql.append(" IDENTITY(").append(seedValue).append(",").append(incrementValue).append(")");
             } catch (DBCException e) {
                 log.error("Error reading identity information", e); //$NON-NLS-1$
             }
@@ -124,7 +126,7 @@ public class SQLServerTableColumnManager extends SQLTableColumnManager<SQLServer
     }
 
     @Override
-    public boolean canDeleteObject(SQLServerTableColumn object) {
+    public boolean canDeleteObject(@NotNull SQLServerTableColumn object) {
         return !isTableType(object) && super.canDeleteObject(object);
     }
 
@@ -133,7 +135,7 @@ public class SQLServerTableColumnManager extends SQLTableColumnManager<SQLServer
     }
 
     @Override
-    protected SQLServerTableColumn createDatabaseObject(DBRProgressMonitor monitor, DBECommandContext context, Object container, Object copyFrom, Map<String, Object> options) throws DBException
+    protected SQLServerTableColumn createDatabaseObject(@NotNull DBRProgressMonitor monitor, @NotNull DBECommandContext context, Object container, Object copyFrom, @NotNull Map<String, Object> options) throws DBException
     {
         final SQLServerTableBase table = (SQLServerTableBase) container;
         final DBSDataType columnType = findBestDataType(table, "varchar"); //$NON-NLS-1$

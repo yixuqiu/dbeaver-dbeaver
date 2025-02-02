@@ -18,7 +18,7 @@
 
 package org.jkiss.dbeaver.ext.oracle.internal;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class OracleMessages extends NLS {
     static final String BUNDLE_NAME = "org.jkiss.dbeaver.ext.oracle.internal.OracleMessages"; //$NON-NLS-1$
@@ -43,4 +43,6 @@ public class OracleMessages extends NLS {
     public static String oracle_server_session_manager_details_description;
     public static String oracle_server_session_manager_display_exec_plan_name;
     public static String oracle_server_session_manager_display_exec_plan_description;
+    public static String pseudo_column_rowid_description;
+    public static String pseudo_column_ora_rowscn_description;
 }

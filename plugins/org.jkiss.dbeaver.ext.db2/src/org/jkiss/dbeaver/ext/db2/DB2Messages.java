@@ -18,7 +18,7 @@
 
 package org.jkiss.dbeaver.ext.db2;
 
-import org.eclipse.osgi.util.NLS;
+import org.jkiss.dbeaver.utils.NLS;
 
 public class DB2Messages extends NLS {
     static final String BUNDLE_NAME = "org.jkiss.dbeaver.ext.db2.DB2Resources"; //$NON-NLS-1$
@@ -42,6 +42,10 @@ public class DB2Messages extends NLS {
     public static String dialog_table_tools_truncate_reuse_storage;
     public static String dialog_table_tools_truncate_ignore_delete_triggers;
     public static String dialog_table_tools_truncate_restrict_when_delete_triggers;
+
+    public static String global_variable_client_ipaddr_description;
+    public static String pseudo_column_datasliceid_description;
+    public static String pseudo_column_rid_bit_description;
 
     static {
         // initialize resource bundle

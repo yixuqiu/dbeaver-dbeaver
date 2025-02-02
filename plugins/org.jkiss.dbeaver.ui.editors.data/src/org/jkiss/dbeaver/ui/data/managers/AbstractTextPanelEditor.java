@@ -55,6 +55,7 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.ActionUtils;
+import org.jkiss.dbeaver.ui.UIStyles;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.StyledTextUtils;
 import org.jkiss.dbeaver.ui.controls.resultset.ResultSetPreferences;
@@ -87,6 +88,7 @@ public abstract class AbstractTextPanelEditor<EDITOR extends BaseTextEditor>
     private static final String PREF_TEXT_EDITOR_WORD_WRAP = "content.text.editor.word-wrap";
     private static final String PREF_TEXT_EDITOR_AUTO_FORMAT = "content.text.editor.auto-format";
     private static final String PREF_TEXT_EDITOR_ENCODING = "content.text.editor.encoding";
+    private static final String PREF_TEXT_EDITOR_MINIFY = "content.text.editor.minify";
 
     private static final Log log = Log.getLog(AbstractTextPanelEditor.class);
     
@@ -190,6 +192,11 @@ public abstract class AbstractTextPanelEditor<EDITOR extends BaseTextEditor>
             final Action afAction = new AutoFormatAction();
             afAction.setChecked(getPanelSettings().getBoolean(PREF_TEXT_EDITOR_AUTO_FORMAT));
             manager.add(afAction);
+            if (supportMinify()) {
+                final Action msAction = new SaveMinifyValue();
+                msAction.setChecked(getPanelSettings().getBoolean(PREF_TEXT_EDITOR_MINIFY));
+                manager.add(msAction);
+            }
         }
 
         if (textEditor != null) {
@@ -242,38 +249,47 @@ public abstract class AbstractTextPanelEditor<EDITOR extends BaseTextEditor>
     private void initEditorSettings(StyledText control) {
         boolean wwEnabled = getPanelSettings().getBoolean(PREF_TEXT_EDITOR_WORD_WRAP);
         if (wwEnabled != control.getWordWrap()) {
-            control.setWordWrap(wwEnabled);
+            //control.setWordWrap(wwEnabled);
         }
     }
 
     private void applyEditorStyle() {
-        BaseTextEditor textEditor = getTextEditor();
-        if (textEditor != null && getPanelSettings().getBoolean(PREF_TEXT_EDITOR_AUTO_FORMAT)) {
-            TextViewer textViewer = textEditor.getTextViewer();
+        if (editor == null) {
+            return;
+        }
+        StyledText textWidget = editor.getEditorControl();
+        if (textWidget == null || textWidget.isDisposed()) {
+            return;
+        }
+        if (getPanelSettings().getBoolean(PREF_TEXT_EDITOR_AUTO_FORMAT)) {
+            TextViewer textViewer = editor.getTextViewer();
             if (textViewer != null) {
-                StyledText textWidget = textViewer.getTextWidget();
-                if (textWidget == null || textWidget.isDisposed()) {
-                    return;
-                }
-                textWidget.setRedraw(false);
-
                 boolean oldEditable = textViewer.isEditable();
-                if (!oldEditable) {
-                    textViewer.setEditable(true);
-                }
                 try {
-                    if (textViewer.canDoOperation(ISourceViewer.FORMAT)) {
-                        textViewer.doOperation(ISourceViewer.FORMAT);
+                    if (!oldEditable) {
+                        textViewer.setEditable(true);
                     }
-                } catch (Exception e) {
-                    log.debug("Error formatting text: " + e.getMessage());
+                    try {
+                        if (textViewer.canDoOperation(ISourceViewer.FORMAT)) {
+                            textViewer.doOperation(ISourceViewer.FORMAT);
+                        }
+                    } catch (Exception e) {
+                        log.debug("Error formatting text: " + e.getMessage());
+                    }
                 } finally {
                     if (!oldEditable) {
                         textViewer.setEditable(false);
                     }
-                    textWidget.setRedraw(true);
                 }
             }
+        }
+        if (getPanelSettings().getBoolean(PREF_TEXT_EDITOR_WORD_WRAP)) {
+            // It must be execute in async mode. Otherwise StyledText goes mad and freezes UI
+            UIUtils.asyncExec(() -> {
+                if (!textWidget.isDisposed()) {
+                    textWidget.setWordWrap(true);
+                }
+            });
         }
     }
 
@@ -305,80 +321,94 @@ public abstract class AbstractTextPanelEditor<EDITOR extends BaseTextEditor>
             log.error("Content value (LOB) is null");
             return;
         }
+        if (editor == null) {
+            log.error("Editor is null or undefined");
+            return;
+        }
+        StyledText editorControl = editor.getEditorControl();
+        if (editorControl == null) {
+            return;
+        }
+        if (valueController.isReadOnly()) {
+            editorControl.setBackground(UIStyles.getDefaultWidgetBackground());
+        }
         try {
-            if (editor == null) {
-                log.error("Editor is null or undefined");
-                return;
-            }
+
+            editorControl.setRedraw(false);
+
             resetEditorInput();
             final DBPPreferenceStore store = valueController.getExecutionContext() != null
                 ? valueController.getExecutionContext().getDataSource().getContainer().getPreferenceStore()
                 : DBWorkbench.getPlatform().getPreferenceStore();
             final int maxContentLength = store.getInt(ResultSetPreferences.RS_EDIT_MAX_TEXT_SIZE) * 1000;
             if (value.getContentLength() > maxContentLength) {
-                showLimitedContent(value, maxContentLength);
+                showLimitedContent(editorControl, value, maxContentLength);
             } else {
-                showRegularContent(monitor);
+                showRegularContent(editorControl, monitor);
             }
         } catch (Exception e) {
             throw new DBException("Error loading text value", e);
         } finally {
             monitor.done();
+
+            editorControl.setRedraw(true);
         }
     }
 
     private void resetEditorInput() {
         // Load contents in two steps (empty + real in async mode). Workaround for some
         // strange bug in StyledText in E4.13 (#6701)
-        UIUtils.asyncExec(() -> {
+        UIUtils.syncExec(() -> {
             if (editor != null) {
                 messageBar.hideMessage();
-                editor.setInput(new StringEditorInput("Empty", "", true, StandardCharsets.UTF_8.name()));
+                editor.setInput(StringEditorInput.EMPTY_INPUT);
             }
         });
     }
 
-    private void showRegularContent(@NotNull DBRProgressMonitor monitor) throws DBException {
+    private void showRegularContent(StyledText editorControl, @NotNull DBRProgressMonitor monitor) throws DBException {
         String encoding = getPanelSettings().get(PREF_TEXT_EDITOR_ENCODING);
         if (encoding == null) {
             encoding = StandardCharsets.UTF_8.name();
         }
         final ContentEditorInput textInput = new ContentEditorInput(valueController, null, null, encoding, monitor);
-        UIUtils.asyncExec(() -> {
-            if (editor != null) {
-                final TextViewer textViewer = editor.getTextViewer();
-                if (textViewer != null) {
-                    StyledText textWidget = textViewer.getTextWidget();
-                    if (textWidget != null) {
-                        GC gc = new GC(textWidget);
-                        try {
-                            UIUtils.drawMessageOverControl(textWidget, gc,
-                                NLS.bind(ResultSetMessages.panel_editor_text_loading_placeholder_label, textInput.getContentLength()), 0);
-                            editor.setInput(textInput);
-                            messageBar.hideMessage();
-                        } finally {
-                            gc.dispose();
-                        }
-                    } else {
-                        editor.setInput(textInput);
+        final TextViewer textViewer = editor.getTextViewer();
+        if (textViewer != null) {
+            long contentLength = textInput.getContentLength();
+
+            StyledText textWidget = textViewer.getTextWidget();
+            if (textWidget != null) {
+                if (contentLength > 100000) {
+                    GC gc = new GC(textWidget);
+                    try {
+                        UIUtils.drawMessageOverControl(textWidget, gc,
+                            NLS.bind(ResultSetMessages.panel_editor_text_loading_placeholder_label, contentLength), 0);
+                    } finally {
+                        gc.dispose();
                     }
-                    applyEditorStyle();
                 }
+                editorControl.setWordWrap(false);
+                editor.setInput(textInput);
+
+                messageBar.hideMessage();
+            } else {
+                editor.setInput(textInput);
             }
-        });
+            applyEditorStyle();
+        }
     }
 
-    private void showLimitedContent(@NotNull DBDContent value, int lengthInBytes) throws DBCException, IOException {
+    private void showLimitedContent(StyledText editorControl, @NotNull DBDContent value, int lengthInBytes) throws DBCException, IOException {
         DBDContentStorage contents = value.getContents(new VoidProgressMonitor());
         try (final InputStream stream = contents.getContentStream()) {
             byte[] displayingContentBytes = stream.readNBytes(lengthInBytes);
             final String content = new String(displayingContentBytes);
-            UIUtils.asyncExec(() -> {
-                if (editor != null) {
-                    editor.setInput(new StringEditorInput("Limited Content ", content, true, StandardCharsets.UTF_8.name()));
-                    messageBar.showMessage(NLS.bind(ResultSetMessages.panel_editor_text_content_limitation_lbl, lengthInBytes / 1000));
-                }
-            });
+            if (editor != null) {
+                editorControl.setWordWrap(false);
+                editor.setInput(new StringEditorInput("Limited Content ", content, true, StandardCharsets.UTF_8.name()));
+                messageBar.showMessage(NLS.bind(ResultSetMessages.panel_editor_text_content_limitation_lbl, lengthInBytes / 1000));
+            }
+            applyEditorStyle();
         }
     }
 
@@ -422,9 +452,13 @@ public abstract class AbstractTextPanelEditor<EDITOR extends BaseTextEditor>
                 monitor.done();
             }
         } else {
+            String text = control.getText();
+            if (getPanelSettings().getBoolean(PREF_TEXT_EDITOR_MINIFY)) {
+                text = minify(text);
+            }
             value.updateContents(
                 monitor,
-                new StringContentStorage(control.getText()));
+                new StringContentStorage(text));
         }
     }
 
@@ -473,6 +507,24 @@ public abstract class AbstractTextPanelEditor<EDITOR extends BaseTextEditor>
             boolean newAF = !getPanelSettings().getBoolean(PREF_TEXT_EDITOR_AUTO_FORMAT);
             //setChecked(newAF);
             getPanelSettings().put(PREF_TEXT_EDITOR_AUTO_FORMAT, newAF);
+            applyEditorStyle();
+        }
+    }
+
+    private class SaveMinifyValue extends Action {
+        SaveMinifyValue() {
+            super(ResultSetMessages.panel_editor_text_minify_name, Action.AS_CHECK_BOX);
+        }
+
+        @Override
+        public boolean isChecked() {
+            return getPanelSettings().getBoolean(PREF_TEXT_EDITOR_MINIFY);
+        }
+
+        @Override
+        public void run() {
+            boolean newMF = !getPanelSettings().getBoolean(PREF_TEXT_EDITOR_MINIFY);
+            getPanelSettings().put(PREF_TEXT_EDITOR_MINIFY, newMF);
             applyEditorStyle();
         }
     }
@@ -559,5 +611,13 @@ public abstract class AbstractTextPanelEditor<EDITOR extends BaseTextEditor>
             UIUtils.setControlVisible(this, false);
             getParent().layout(true, true);
         }
+    }
+
+    public boolean supportMinify() {
+        return false;
+    }
+
+    public String minify(String value) {
+        return value;
     }
 }

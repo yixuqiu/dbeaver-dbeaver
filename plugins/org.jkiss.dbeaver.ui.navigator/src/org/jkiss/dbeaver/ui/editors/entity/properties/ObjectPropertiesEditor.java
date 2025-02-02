@@ -113,13 +113,12 @@ public class ObjectPropertiesEditor extends AbstractDatabaseObjectEditor<DBSObje
         pageControl = new ObjectEditorPageControl(parent, SWT.SHEET, this) {
             @Override
             public void fillCustomActions(IContributionManager contributionManager) {
-                createPropertyRefreshAction(contributionManager);
-
                 super.fillCustomActions(contributionManager);
                 if (propertiesPanel != null && folderComposite == null) {
                     // We have object editor and no folders - contribute default actions
                     DatabaseEditorUtils.contributeStandardEditorActions(getSite(), contributionManager);
                 }
+                createPropertyRefreshAction(contributionManager);
             }
         };
         CSSUtils.setCSSClass(pageControl, DBStyles.COLORED_BY_CONNECTION_TYPE);
@@ -270,7 +269,7 @@ public class ObjectPropertiesEditor extends AbstractDatabaseObjectEditor<DBSObje
             }
         });
         
-        folderComposite.switchFolder(curFolderId);
+        UIUtils.syncExec(() -> folderComposite.switchFolder(curFolderId));
         
         return foldersPlaceholder;
     }
@@ -517,20 +516,26 @@ public class ObjectPropertiesEditor extends AbstractDatabaseObjectEditor<DBSObje
 
     @Override
     public RefreshResult refreshPart(Object source, boolean force) {
-        if (propertiesPanel != null) {
-            if (propertiesPanel.refreshPart(source, force) == RefreshResult.CANCELED) {
-                return RefreshResult.CANCELED;
-            }
-        }
-        if (folderComposite != null && folderComposite.getFolders() != null) {
-            for (TabbedFolderInfo folder : folderComposite.getFolders()) {
-                if (folder.getContents() instanceof IRefreshablePart) {
-                    if (((IRefreshablePart) folder.getContents()).refreshPart(source, force) == RefreshResult.CANCELED) {
-                        return RefreshResult.CANCELED;
+
+        Runnable afterRefresh = () -> {
+            if (folderComposite != null && folderComposite.getFolders() != null) {
+                for (TabbedFolderInfo folder : folderComposite.getFolders()) {
+                    if (folder.getContents() instanceof IRefreshablePart) {
+                        ((IRefreshablePart) folder.getContents()).refreshPart(source, force);
                     }
                 }
             }
+        };
+
+        if (propertiesPanel != null) {
+            if (propertiesPanel.refreshPart(force, afterRefresh) == RefreshResult.CANCELED) {
+                return RefreshResult.CANCELED;
+            }
+        } else {
+            // we still have to refresh folders in that way
+            UIUtils.asyncExec(afterRefresh);
         }
+
         return RefreshResult.REFRESHED;
     }
 
@@ -690,8 +695,7 @@ public class ObjectPropertiesEditor extends AbstractDatabaseObjectEditor<DBSObje
                 log.error("Error initializing property tabs", e); //$NON-NLS-1$
             }
             // Add itself as tab (if it has child items)
-            if (node instanceof DBNDatabaseNode) {
-                DBNDatabaseNode databaseNode = (DBNDatabaseNode)node;
+            if (node instanceof DBNDatabaseNode databaseNode) {
                 List<DBXTreeNode> subNodes = databaseNode.getMeta().getChildren(databaseNode);
                 if (subNodes != null) {
                     for (DBXTreeNode child : subNodes) {
