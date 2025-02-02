@@ -35,6 +35,7 @@ import org.jkiss.dbeaver.ui.UIExecutionQueue;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.ViewerColumnController;
 import org.jkiss.dbeaver.ui.internal.UINavigatorMessages;
+import org.jkiss.dbeaver.ui.navigator.INavigatorFilter;
 import org.jkiss.dbeaver.ui.navigator.database.DatabaseBrowserView;
 import org.jkiss.dbeaver.ui.navigator.database.DatabaseNavigatorTree;
 
@@ -68,6 +69,11 @@ public class FileSystemExplorerView extends DatabaseBrowserView {
 
     public FileSystemExplorerView() {
         super();
+    }
+
+    @Override
+    protected INavigatorFilter getNavigatorFilter() {
+        return new SimpleNavigatorTreeFilter();
     }
 
     @Override
