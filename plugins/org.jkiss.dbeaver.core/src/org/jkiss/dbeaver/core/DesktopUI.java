@@ -767,7 +767,12 @@ public class DesktopUI extends ConsoleUserInterface {
             return false;
         }
     }
-    
+
+    @Override
+    public <T> T runWithMonitor(@NotNull DBRRunnableWithReturn<T> runnable) throws DBException {
+        return UIUtils.runWithMonitor(runnable);
+    }
+
     private static long getLongOperationTime() {
         try {
             return PlatformUI.getWorkbench().getProgressService().getLongOperationTime();
