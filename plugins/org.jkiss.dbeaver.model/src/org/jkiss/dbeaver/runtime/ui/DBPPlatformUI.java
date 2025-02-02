@@ -167,16 +167,15 @@ public interface DBPPlatformUI {
     @NotNull
     <T> Future<T> executeWithProgressBlocking(@NotNull String operationDescription, @NotNull DBRRunnableWithResult<Future<T>> runnable);
 
+    /**
+     * Runs task with system progress monitor
+     */
+    <T> T runWithMonitor(@NotNull DBRRunnableWithReturn<T> runnable) throws DBException;
+
     @NotNull
     <RESULT> Job createLoadingService(
         ILoadService<RESULT> loadingService,
         ILoadVisualizer<RESULT> visualizer);
-
-    /**
-     * FIXME: this is a hack. We need to call platform (workbench) to refresh part's contexts (enabled commands).
-     * There is no such thing as part in abstract UI. Need some better solution.
-     */
-    void refreshPartState(Object part);
 
     void copyTextToClipboard(String text, boolean htmlFormat);
 
@@ -193,10 +192,5 @@ public interface DBPPlatformUI {
         String defaultValue);
 
     boolean readAndDispatchEvents();
-
-    /**
-     * Runs task with system progress monitor
-     */
-    <T> T runWithMonitor(@NotNull DBRRunnableWithReturn<T> runnable) throws DBException;
 
 }

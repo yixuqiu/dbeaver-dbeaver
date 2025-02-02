@@ -33,7 +33,10 @@ import org.eclipse.swt.events.SelectionListener;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
-import org.eclipse.ui.*;
+import org.eclipse.ui.IWorkbench;
+import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.PartInitException;
+import org.eclipse.ui.PlatformUI;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBDatabaseException;
@@ -117,13 +120,6 @@ public class DesktopUI extends ConsoleUserInterface {
                 return Status.OK_STATUS;
             }
         }.schedule();
-    }
-
-    public void refreshPartContexts(IWorkbenchPart part) {
-        if (contextListener != null) {
-            contextListener.deactivatePartContexts(part);
-            contextListener.activatePartContexts(part);
-        }
     }
 
     @Override
@@ -642,18 +638,17 @@ public class DesktopUI extends ConsoleUserInterface {
         
         return job.getResult().isOK() ? runnable.getResult() : CompletableFuture.failedFuture(job.getResult().getException());
     }
-    
+
+    @Override
+    public <T> T runWithMonitor(@NotNull DBRRunnableWithReturn<T> runnable) throws DBException {
+        return UIUtils.runWithMonitor(runnable);
+    }
+
+
     @NotNull
     @Override
     public <RESULT> Job createLoadingService(ILoadService<RESULT> loadingService, ILoadVisualizer<RESULT> visualizer) {
         return LoadingJob.createService(loadingService, visualizer);
-    }
-
-    @Override
-    public void refreshPartState(Object part) {
-        if (part instanceof IWorkbenchPart) {
-            UIUtils.asyncExec(() -> DesktopUI.getInstance().refreshPartContexts((IWorkbenchPart)part));
-        }
     }
 
     @Override
@@ -766,11 +761,6 @@ public class DesktopUI extends ConsoleUserInterface {
         } else {
             return false;
         }
-    }
-
-    @Override
-    public <T> T runWithMonitor(@NotNull DBRRunnableWithReturn<T> runnable) throws DBException {
-        return UIUtils.runWithMonitor(runnable);
     }
 
     private static long getLongOperationTime() {

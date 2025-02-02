@@ -232,6 +232,11 @@ public class ConsoleUserInterface implements DBPPlatformUI {
         }
     }
 
+    @Override
+    public <T> T runWithMonitor(@NotNull DBRRunnableWithReturn<T> runnable) throws DBException {
+        return runnable.runTask(new LoggingProgressMonitor(log));
+    }
+
     @NotNull
     @Override
     public <RESULT> Job createLoadingService(ILoadService<RESULT> loadingService, ILoadVisualizer<RESULT> visualizer) {
@@ -249,11 +254,6 @@ public class ConsoleUserInterface implements DBPPlatformUI {
                 }
             }
         };
-    }
-
-    @Override
-    public void refreshPartState(Object part) {
-        // do nothing
     }
 
     @Override
@@ -296,11 +296,6 @@ public class ConsoleUserInterface implements DBPPlatformUI {
     public boolean readAndDispatchEvents() {
 
         return false;
-    }
-
-    @Override
-    public <T> T runWithMonitor(@NotNull DBRRunnableWithReturn<T> runnable) throws DBException {
-        return runnable.runTask(new LoggingProgressMonitor(log));
     }
 
 }
